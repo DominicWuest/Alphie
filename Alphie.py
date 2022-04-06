@@ -1,7 +1,9 @@
 import discord
 from discord.ext import commands
 
-from Constants import *
+import Constants
+from Constants import emojis
+from Constants import authorized_ids
 
 import os
 import random
@@ -11,6 +13,7 @@ bot = commands.Bot(command_prefix=':) ')
 
 @bot.event
 async def on_ready():
+    await Constants.initialize_constants(bot)
     await bot.change_presence(activity=discord.Activity(type=discord.ActivityType.watching, name="the Pikmin bloom"))
     print('Alphie is ready to pluck!')
 
