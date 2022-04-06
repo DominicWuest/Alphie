@@ -11,6 +11,8 @@ emojis = {
     "alph" : "<:alph:959849626020761680>"
 }
 
+authorized_ids = []
+
 @bot.event
 async def on_ready():
     await bot.change_presence(activity=discord.Activity(type=discord.ActivityType.watching, name="the Pikmin bloom"))
@@ -31,5 +33,20 @@ async def on_message(message):
 @bot.command()
 async def ping(ctx):
     await ctx.send(f'Pong! `{round(bot.latency * 1000)}ms`')
+
+@bot.command()
+async def load(ctx, module):
+    if (ctx.author.id in authorized_ids):
+        bot.load_extension(module)
+    
+@bot.command()
+async def unload(ctx, module):
+    if (ctx.author.id in authorized_ids):
+        bot.unload_extension(module)
+
+# Load all cogs on startup
+for cog in os.listdir('cogs'):
+    if (cog.endswith(".py")):
+        bot.load_extension('cogs.' + cog[:-3])
 
 bot.run(os.getenv('API_TOKEN'))
