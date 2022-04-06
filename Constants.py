@@ -6,7 +6,13 @@ __HOME_GUILD_ID = 0
 __HOME_GUILD = None
 
 # A dictionary of emojis from the home guild
-emojis = {}
+emojis = {
+    "success" : "✅",
+    "fail" : "❌",
+    "pause" : "⏸️",
+    "play" : "▶️",
+    "repeat" : "🔁"
+}
 
 # The ID's of users who are allowed to use privileged commands
 authorized_ids = []

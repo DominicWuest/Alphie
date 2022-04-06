@@ -31,9 +31,10 @@ async def on_message(message):
 
 @bot.command()
 async def ping(ctx):
-    await ctx.send(f'Pong! `{round(bot.latency * 1000)}ms`')
+    await ctx.send(f'Pong! `{round(bot.latency * 1000)}ms` {emojis["alph"]}')
 
 @bot.command()
+# Load extension
 async def load(ctx, module):
     if (ctx.author.id in authorized_ids):
         try:
@@ -45,6 +46,7 @@ async def load(ctx, module):
         await ctx.send('You haven\'t even thrown a Pikmin yet and already try to use such a command? Permission denied. ' + emojis["alph"])
     
 @bot.command()
+# Unload extension
 async def unload(ctx, module):
     if (ctx.author.id in authorized_ids):
         try:
