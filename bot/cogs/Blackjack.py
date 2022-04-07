@@ -176,6 +176,7 @@ class Blackjack(commands.Cog):
         await self.game_message.clear_reactions()
 
         self.state = IDLE
+        self.game_message = None
 
     @commands.Cog.listener()
     async def on_reaction_add(self, reaction, user):
