@@ -11,6 +11,10 @@ import re
 
 bot = commands.Bot(command_prefix=':) ')
 
+# Check for whether user calling command is authorized
+def authorized(ctx):
+    return ctx.author.id in authorized_ids
+
 @bot.event
 async def on_ready():
     await Constants.initialize_constants(bot)
@@ -33,29 +37,32 @@ async def on_message(message):
 async def ping(ctx):
     await ctx.send(f'Pong! `{round(bot.latency * 1000)}ms` {emojis["alph"]}')
 
-@bot.command()
+@bot.command(checks=[authorized])
 # Load extension
 async def load(ctx, module):
-    if (ctx.author.id in authorized_ids):
-        try:
-            bot.load_extension('cogs.' + module)
-            await ctx.send(f'Successfully loaded {module} {emojis["alph"]}')
-        except:
-            await ctx.send(f'Couldn\'t load {module} {emojis["alph"]}')
-    else:
-        await ctx.send('You haven\'t even thrown a Pikmin yet and already try to use such a command? Permission denied. ' + emojis["alph"])
+    try:
+        bot.load_extension('cogs.' + module)
+        await ctx.send(f'Successfully loaded {module} {emojis["alph"]}')
+    except:
+        await ctx.send(f'Couldn\'t load {module} {emojis["alph"]}')
     
-@bot.command()
+@bot.command(checks=[authorized])
 # Unload extension
 async def unload(ctx, module):
-    if (ctx.author.id in authorized_ids):
-        try:
-            bot.unload_extension('cogs.' + module)
-            await ctx.send(f'Successfully unloaded {module} {emojis["alph"]}')
-        except:
-            await ctx.send(f'Couldn\'t unload {module} {emojis["alph"]}')
-    else:
-        await ctx.send('You haven\'t even thrown a Pikmin yet and already try to use such a command? Permission denied. ' + emojis["alph"])
+    try:
+        bot.unload_extension('cogs.' + module)
+        await ctx.send(f'Successfully unloaded {module} {emojis["alph"]}')
+    except:
+        await ctx.send(f'Couldn\'t unload {module} {emojis["alph"]}')
+
+@bot.command(checks=[authorized])
+# Unload extension
+async def reload(ctx, module):
+    try:
+        bot.reload_extension('cogs.' + module)
+        await ctx.send(f'Successfully reloaded {module} {emojis["alph"]}')
+    except:
+        await ctx.send(f'Couldn\'t reload {module} {emojis["alph"]}')
 
 # Load all cogs on startup
 for cog in os.listdir('cogs'):
