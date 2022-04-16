@@ -1,5 +1,8 @@
-FROM python
+FROM golang:1.18
 WORKDIR /usr/src/app
+COPY go.mod go.sum ./
+RUN go mod download
 COPY . .
-RUN pip3 install -r requirements.txt
-CMD ["python3", "Alphie.py"]
+CMD ["go", "run", "Alphie.go"]
+
+# TODO: Builder + Production for Kubernetes

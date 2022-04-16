@@ -1,5 +1,6 @@
 services:
   bot:
+    container_name: alphie-bot
     build: ./bot
     env_file:
       - bot.env  
