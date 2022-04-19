@@ -28,6 +28,7 @@ func main() {
 	// Initialising all commands
 	COMMANDS["ping"] = &commands.Ping{}
 	COMMANDS["blackjack"] = &commands.Blackjack{}
+	COMMANDS["todo"] = &commands.Todo{}
 
 	COMMANDS["help"] = &commands.Help{Commands: &COMMANDS}
 
