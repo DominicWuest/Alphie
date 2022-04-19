@@ -26,10 +26,10 @@ func main() {
 	rand.Seed(time.Now().UnixNano())
 
 	// Initialising all commands
-	COMMANDS["ping"] = &commands.Ping{}
-	COMMANDS["blackjack"] = &commands.Blackjack{}
+	COMMANDS["ping"] = commands.Ping{}.Init()
+	COMMANDS["blackjack"] = commands.Blackjack{}.Init()
 
-	COMMANDS["help"] = &commands.Help{Commands: &COMMANDS}
+	COMMANDS["help"] = commands.Help{}.Init(&COMMANDS)
 
 	bot, err := discord.New("Bot " + os.Getenv("API_TOKEN"))
 	if err != nil {
@@ -50,7 +50,7 @@ func main() {
 	// Wait here until term signal is received.
 	fmt.Println("Alphie is ready to pluck!")
 	sc := make(chan os.Signal, 1)
-	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM, os.Interrupt, os.Kill)
+	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM, os.Interrupt)
 	<-sc
 
 	// Cleanly close down the Discord session.
@@ -118,6 +118,5 @@ func interactionCreate(bot *discord.Session, interaction *discord.InteractionCre
 		} else {
 			fmt.Println("Interaction created but ID not found")
 		}
-		break
 	}
 }
