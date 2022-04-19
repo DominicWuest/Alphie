@@ -27,3 +27,7 @@ func (s Ping) Desc() string {
 func (s Ping) Help() string {
 	return "The command does not take any additional arguments."
 }
+
+func (s Ping) Init(args ...interface{}) constants.Command {
+	return &s
+}
