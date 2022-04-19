@@ -26,10 +26,9 @@ type Blackjack struct {
 
 var cards = [...]string{"2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A"}
 
-const idle = 0    // Game not running
-const dealing = 1 // Currently dealing out cards
-const waiting = 2 // Waiting for user input
-const over = 3    // Game has ended
+const dealing = 0 // Currently dealing out cards
+const waiting = 1 // Waiting for user input
+const over = 2    // Game has ended
 
 const dealingDelay = 250 * time.Millisecond
 
@@ -61,6 +60,18 @@ func (s *Blackjack) HandleCommand(bot *discord.Session, ctx *discord.MessageCrea
 		s.bot.ChannelMessageDelete(ctx.ChannelID, ctx.ID)
 		s.startNewGame(bot, ctx)
 	}
+}
+
+func (s Blackjack) Desc() string {
+	return "Lets the user play blackjack!"
+}
+
+func (s Blackjack) Help() string {
+	return "The command does not take any additional arguments, simply invoke the command and play some blackjack!"
+}
+
+func (s Blackjack) Init(args ...interface{}) constants.Command {
+	return &s
 }
 
 func (s *Blackjack) startNewGame(bot *discord.Session, ctx *discord.MessageCreate) {
@@ -344,6 +355,11 @@ func (s *Blackjack) handleExit(interaction *discord.Interaction) {
 	s.bot.Lock()
 	defer s.bot.Unlock()
 
+	delete(constants.Handlers.MessageComponents, "blackjack_hit")
+	delete(constants.Handlers.MessageComponents, "blackjack_stand")
+	delete(constants.Handlers.MessageComponents, "blackjack_exit")
+	delete(constants.Handlers.MessageComponents, "blackjack_restart")
+
 	s.exit()
 }
 
@@ -359,6 +375,8 @@ func (s *Blackjack) handleRestart(interaction *discord.Interaction) {
 
 	s.bot.Lock()
 	defer s.bot.Unlock()
+
+	delete(constants.Handlers.MessageComponents, "blackjack_restart")
 
 	s.startNewGame(s.bot, s.ctx)
 }
@@ -396,6 +414,8 @@ func (s *Blackjack) endGame(playerWinner bool) {
 		ID:      s.message.ID,
 		Channel: s.message.ChannelID,
 	})
+	delete(constants.Handlers.MessageComponents, "blackjack_hit")
+	delete(constants.Handlers.MessageComponents, "blackjack_stand")
 	constants.Handlers.MessageComponents["blackjack_restart"] = s.handleRestart
 }
 
@@ -450,12 +470,4 @@ func max(arr []int) int {
 		}
 	}
 	return max
-}
-
-func (s Blackjack) Desc() string {
-	return "Lets the user play blackjack!"
-}
-
-func (s Blackjack) Help() string {
-	return "The command does not take any additional arguments, simply invoke the command and play some blackjack!"
 }

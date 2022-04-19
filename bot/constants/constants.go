@@ -17,6 +17,7 @@ type Command interface {
 	HandleCommand(*discord.Session, *discord.MessageCreate, []string)
 	Desc() string
 	Help() string
+	Init(...interface{}) Command
 }
 
 var HomeGuildID string

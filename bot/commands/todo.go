@@ -1,6 +1,8 @@
 package commands
 
 import (
+	"github.com/DominicWuest/Alphie/constants"
+
 	discord "github.com/bwmarrin/discordgo"
 )
 
@@ -36,6 +38,10 @@ func (s Todo) Desc() string {
 
 func (s Todo) Help() string {
 	return "Placeholder"
+}
+
+func (s Todo) Init(args ...interface{}) constants.Command {
+	return &s
 }
 
 func (s *Todo) add(bot *discord.Session, ctx *discord.MessageCreate, args []string) {

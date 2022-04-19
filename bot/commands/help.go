@@ -43,3 +43,12 @@ func (s Help) Desc() string {
 func (s Help) Help() string {
 	return "The command does not take any additional arguments."
 }
+
+func (s Help) Init(args ...interface{}) constants.Command {
+	commands, test := args[0].(*map[string]constants.Command)
+	if test {
+		s.Commands = commands
+		return &s
+	}
+	panic("Error: Passed wrong type to the init function for the command help")
+}
