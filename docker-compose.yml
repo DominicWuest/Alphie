@@ -17,3 +17,5 @@ services:
     volumes:
       - ./db/data:/var/lib/postgresql/data # Persistent data storage
       - ./db/init:/docker-entrypoint-initdb.d # DB initialisation scripts
+    ports:
+      - ${DB_PORT}:5432
