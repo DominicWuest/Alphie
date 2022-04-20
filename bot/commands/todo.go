@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/DominicWuest/Alphie/constants"
@@ -86,7 +87,36 @@ func (s Todo) Init(args ...interface{}) constants.Command {
 
 func (s *Todo) add(bot *discord.Session, ctx *discord.MessageCreate, args []string) {
 	s.checkUserPresence(ctx.Author.ID)
-	bot.ChannelMessageSend(ctx.ChannelID, "todo.add")
+	bot.ChannelMessageDelete(ctx.ChannelID, ctx.Message.ID)
+	if len(args) == 0 {
+		interactionId := "todo.add-button:" + ctx.Message.ID
+		msg, _ := bot.ChannelMessageSendComplex(ctx.ChannelID, &discord.MessageSend{
+			Content:   "Press the button to add a new TODO item.\nAlternatively you can use the command `todo add x1` to add an item with a title of `x1`.",
+			Reference: ctx.MessageReference,
+			Components: []discord.MessageComponent{
+				discord.ActionsRow{
+					Components: []discord.MessageComponent{
+						discord.Button{
+							Label:    "Add TODO item",
+							Style:    discord.SuccessButton,
+							CustomID: interactionId,
+						},
+					},
+				},
+			},
+		})
+		constants.Handlers.MessageComponents[interactionId] = func(interaction *discord.Interaction) {
+			if interaction.Member.User.ID == ctx.Author.ID {
+				delete(constants.Handlers.MessageComponents, interactionId)
+				bot.ChannelMessageDelete(msg.ChannelID, msg.ID)
+			}
+			s.addItemModalCreate(bot, interaction)
+		}
+	} else if strings.ToLower(args[0]) == "help" {
+		bot.ChannelMessageSend(ctx.ChannelID, "Call this command with no arguments to add a new TODO item.\nAlternatively, you can use the command `todo add x1` to add an item with a title of `x1`.")
+	} else { // Add new item with title
+		s.addItem(ctx.Author.ID, strings.Join(args, " "), "")
+	}
 }
 
 func (s *Todo) list(bot *discord.Session, ctx *discord.MessageCreate, args []string) {
@@ -112,6 +142,50 @@ func (s *Todo) subscribe(bot *discord.Session, ctx *discord.MessageCreate, args 
 func (s *Todo) archive(bot *discord.Session, ctx *discord.MessageCreate, args []string) {
 	s.checkUserPresence(ctx.Author.ID)
 	bot.ChannelMessageSend(ctx.ChannelID, "todo.archive")
+}
+
+// Adds a todo item
+func (s *Todo) addItem(author, title, description string) {
+
+}
+
+// Responds to an interaction with the modal for a user to add an item
+func (s *Todo) addItemModalCreate(bot *discord.Session, interaction *discord.Interaction) {
+	bot.InteractionRespond(interaction, &discord.InteractionResponse{
+		Type: discord.InteractionResponseModal,
+		Data: &discord.InteractionResponseData{
+			Content:  "Test",
+			CustomID: "todo.add-button-modal:" + interaction.ID,
+			Title:    "Add TODO item",
+			Components: []discord.MessageComponent{
+				discord.ActionsRow{
+					Components: []discord.MessageComponent{
+						discord.TextInput{
+							CustomID:    "todo.add-button-modal-title:" + interaction.ID,
+							Label:       "TODO item title",
+							Style:       discord.TextInputShort,
+							Placeholder: "Enter title here...",
+							MinLength:   1,
+							MaxLength:   50,
+							Required:    true,
+						},
+					},
+				},
+				discord.ActionsRow{
+					Components: []discord.MessageComponent{
+						discord.TextInput{
+							CustomID:    "todo.add-button-modal-desc:" + interaction.ID,
+							Label:       "TODO item description",
+							Style:       discord.TextInputParagraph,
+							Placeholder: "Enter description here...",
+							MaxLength:   300,
+							Required:    false,
+						},
+					},
+				},
+			},
+		},
+	})
 }
 
 // Checks if a user is present in the database and inserts them if not
