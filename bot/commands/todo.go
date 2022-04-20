@@ -113,7 +113,7 @@ func (s *Todo) add(bot *discord.Session, ctx *discord.MessageCreate, args []stri
 			s.addItemModalCreate(bot, interaction)
 		}
 	} else if strings.ToLower(args[0]) == "help" {
-		bot.ChannelMessageSend(ctx.ChannelID, "Call this command with no arguments to add a new TODO item.\nAlternatively, you can use the command `todo add x1` to add an item with a title of `x1`.")
+		bot.ChannelMessageSend(ctx.ChannelID, "Call the `todo add` command with no arguments to add a new TODO item.\nAlternatively, you can use the command `todo add x1` to add an item with a title of `x1`.")
 	} else { // Add new item with title
 		s.addItem(ctx.Author.ID, strings.Join(args, " "), "")
 	}
@@ -146,16 +146,24 @@ func (s *Todo) archive(bot *discord.Session, ctx *discord.MessageCreate, args []
 
 // Adds a todo item
 func (s *Todo) addItem(author, title, description string) {
-
+	db, _ := sql.Open("postgres", s.psqlConn)
+	defer db.Close()
+	db.Exec(
+		`INSERT INTO todo.task (id, creator, title, description) VALUES (DEFAULT, $1, $2, $3)`,
+		author,
+		title,
+		description,
+	)
 }
 
 // Responds to an interaction with the modal for a user to add an item
 func (s *Todo) addItemModalCreate(bot *discord.Session, interaction *discord.Interaction) {
+	interactionId := "todo.add-button-modal:" + interaction.ID
 	bot.InteractionRespond(interaction, &discord.InteractionResponse{
 		Type: discord.InteractionResponseModal,
 		Data: &discord.InteractionResponseData{
 			Content:  "Test",
-			CustomID: "todo.add-button-modal:" + interaction.ID,
+			CustomID: interactionId,
 			Title:    "Add TODO item",
 			Components: []discord.MessageComponent{
 				discord.ActionsRow{
@@ -186,6 +194,19 @@ func (s *Todo) addItemModalCreate(bot *discord.Session, interaction *discord.Int
 			},
 		},
 	})
+
+	constants.Handlers.ModalSubmit[interactionId] = func(interaction *discord.Interaction) {
+		bot.InteractionRespond(interaction, &discord.InteractionResponse{
+			Type: discord.InteractionResponseDeferredMessageUpdate,
+		})
+		// Get title
+		titleRow := interaction.ModalSubmitData().Components[0].(*discord.ActionsRow)
+		title := (*titleRow.Components[0].(*discord.TextInput)).Value
+		// Get description
+		descRow := *interaction.ModalSubmitData().Components[1].(*discord.ActionsRow)
+		desc := (*descRow.Components[0].(*discord.TextInput)).Value
+		fmt.Println(title, desc)
+	}
 }
 
 // Checks if a user is present in the database and inserts them if not
