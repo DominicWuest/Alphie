@@ -9,7 +9,7 @@ CREATE TABLE todo.task (
   id  SERIAL NOT NULL,
   creator VARCHAR(19) references todo.discord_user (id) NOT NULL,
   title TEXT NOT NULL,
-  description TEXT,
+  description TEXT NOT NULL,
   PRIMARY KEY(id)
 );
 
