@@ -17,6 +17,17 @@ type Todo struct {
 	psqlConn string
 }
 
+type todoItem struct {
+	id          int
+	creator     string
+	title       string
+	description string
+}
+
+const (
+	todoEmbedColor = 0x0BEEF0
+)
+
 func (s *Todo) HandleCommand(bot *discord.Session, ctx *discord.MessageCreate, args []string) {
 	if len(args) == 1 {
 		bot.ChannelMessageSend(ctx.ChannelID, s.Help())
@@ -31,7 +42,7 @@ func (s *Todo) HandleCommand(bot *discord.Session, ctx *discord.MessageCreate, a
 	case "done": // Sets the status of an item to done
 		s.done(bot, ctx, args[2:])
 	case "remove": // Removes an item
-		s.remove(bot, ctx, args[2:])
+		s.delete(bot, ctx, args[2:])
 	case "subscribe": // Subscribes to a list or lists all possible ones
 		s.subscribe(bot, ctx, args[2:])
 	case "archive": // Archives an item
@@ -42,7 +53,7 @@ func (s *Todo) HandleCommand(bot *discord.Session, ctx *discord.MessageCreate, a
 }
 
 func (s Todo) Desc() string {
-	return "Lets you keep track of your todos, including subscribing to default schedules for semesters!"
+	return "Lets you keep track of your TODOs, including subscribing to default schedules for semesters!"
 }
 
 func (s Todo) Help() string {
@@ -121,7 +132,29 @@ func (s *Todo) add(bot *discord.Session, ctx *discord.MessageCreate, args []stri
 
 func (s *Todo) list(bot *discord.Session, ctx *discord.MessageCreate, args []string) {
 	s.checkUserPresence(ctx.Author.ID)
-	bot.ChannelMessageSend(ctx.ChannelID, "todo.list")
+	fields := []*discord.MessageEmbedField{}
+
+	userTODOs := s.getUserTODOs(ctx.Author.ID)
+	for i, item := range userTODOs {
+		value := "ID: " + fmt.Sprint(item.id) + "\n" + item.description
+		fields = append(fields, &discord.MessageEmbedField{
+			Name:  fmt.Sprintf("%d: %s", i+1, item.title),
+			Value: value,
+		})
+	}
+
+	embed := discord.MessageEmbed{
+		Author: &discord.MessageEmbedAuthor{
+			Name: ctx.Author.Username + "s TODOs",
+		},
+		Color:  todoEmbedColor,
+		Fields: fields,
+		Footer: &discord.MessageEmbedFooter{
+			Text:    "Invoked by " + ctx.Author.Username,
+			IconURL: ctx.Author.AvatarURL(""),
+		},
+	}
+	bot.ChannelMessageSendEmbed(ctx.ChannelID, &embed)
 }
 
 func (s *Todo) done(bot *discord.Session, ctx *discord.MessageCreate, args []string) {
@@ -129,7 +162,7 @@ func (s *Todo) done(bot *discord.Session, ctx *discord.MessageCreate, args []str
 	bot.ChannelMessageSend(ctx.ChannelID, "todo.done")
 }
 
-func (s *Todo) remove(bot *discord.Session, ctx *discord.MessageCreate, args []string) {
+func (s *Todo) delete(bot *discord.Session, ctx *discord.MessageCreate, args []string) {
 	s.checkUserPresence(ctx.Author.ID)
 	bot.ChannelMessageSend(ctx.ChannelID, "todo.remove")
 }
@@ -144,16 +177,55 @@ func (s *Todo) archive(bot *discord.Session, ctx *discord.MessageCreate, args []
 	bot.ChannelMessageSend(ctx.ChannelID, "todo.archive")
 }
 
-// Adds a todo item
+// Adds an active todo item
 func (s *Todo) addItem(author, title, description string) {
 	db, _ := sql.Open("postgres", s.psqlConn)
 	defer db.Close()
+
+	taskId := 0
+	rows, _ := db.Query(`SELECT MAX(id) FROM todo.task`)
+	if rows.Next() {
+		rows.Scan(&taskId)
+		rows.Close()
+		taskId++
+	}
+
+	// Insert task into task table
 	db.Exec(
-		`INSERT INTO todo.task (id, creator, title, description) VALUES (DEFAULT, $1, $2, $3)`,
+		`INSERT INTO todo.task (id, creator, title, description) VALUES ($1, $2, $3, $4)`,
+		taskId,
 		author,
 		title,
 		description,
 	)
+
+	// Insert task into active
+	db.Exec(
+		`INSERT INTO todo.active (discord_user, task) VALUES ($1, $2)`,
+		author,
+		taskId,
+	)
+}
+
+// Returns an array of all active TODOs of a user
+func (s *Todo) getUserTODOs(user string) []todoItem {
+	items := []todoItem{}
+
+	db, _ := sql.Open("postgres", s.psqlConn)
+	defer db.Close()
+
+	rows, _ := db.Query(
+		`SELECT t.* FROM todo.task AS t JOIN todo.active AS a ON a.task=t.id WHERE a.discord_user=$1`,
+		user,
+	)
+
+	for rows.Next() {
+		nextItem := todoItem{}
+		rows.Scan(&nextItem.id, &nextItem.creator, &nextItem.title, &nextItem.description)
+		items = append(items, nextItem)
+	}
+
+	return items
 }
 
 // Responds to an interaction with the modal for a user to add an item
