@@ -13,6 +13,18 @@ CREATE TABLE todo.task (
   PRIMARY KEY(id)
 );
 
+CREATE TABLE todo.active (
+    discord_user VARCHAR(19) references todo.discord_user (id) NOT NULL,
+    task SERIAL references todo.task (id) NOT NULL,
+    PRIMARY KEY (discord_user, task)
+);
+
+CREATE TABLE todo.archived (
+    discord_user VARCHAR(19) references todo.discord_user (id) NOT NULL,
+    task SERIAL references todo.task (id) NOT NULL,
+    PRIMARY KEY (discord_user, task)
+);
+
 CREATE TABLE todo.completed (
     discord_user VARCHAR(19) references todo.discord_user (id) NOT NULL,
     task SERIAL references todo.task (id) NOT NULL,
