@@ -205,7 +205,7 @@ func (s *Todo) addItemModalCreate(bot *discord.Session, interaction *discord.Int
 		// Get description
 		descRow := *interaction.ModalSubmitData().Components[1].(*discord.ActionsRow)
 		desc := (*descRow.Components[0].(*discord.TextInput)).Value
-		fmt.Println(title, desc)
+		s.addItem(interaction.Member.User.ID, title, desc)
 	}
 }
 
