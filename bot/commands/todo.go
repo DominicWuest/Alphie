@@ -37,7 +37,7 @@ func (s *Todo) HandleCommand(bot *discord.Session, ctx *discord.MessageCreate, a
 	switch args[1] {
 	case "add": // Add a new item
 		s.add(bot, ctx, args[2:])
-	case "list": // List all items
+	case "list": // List items
 		s.list(bot, ctx, args[2:])
 	case "done": // Sets the status of an item to done
 		s.done(bot, ctx, args[2:])
@@ -73,6 +73,7 @@ func (s Todo) Init(args ...interface{}) constants.Command {
 	db, err := sql.Open("postgres", s.psqlConn)
 	if err != nil {
 		fmt.Println("Error connecting to the database: ", err)
+		return &s
 	}
 
 	defer db.Close()
@@ -124,37 +125,55 @@ func (s *Todo) add(bot *discord.Session, ctx *discord.MessageCreate, args []stri
 			s.addItemModalCreate(bot, interaction)
 		}
 	} else if strings.ToLower(args[0]) == "help" {
-		bot.ChannelMessageSend(ctx.ChannelID, "Call the `todo add` command with no arguments to add a new TODO item.\nAlternatively, you can use the command `todo add x1` to add an item with a title of `x1`.")
+		bot.ChannelMessageSend(ctx.ChannelID, s.addHelp())
 	} else { // Add new item with title
 		s.addItem(ctx.Author.ID, strings.Join(args, " "), "")
 	}
 }
 
+func (s Todo) addHelp() string {
+	return "Call the `todo add` command with no arguments to add a new TODO item.\nAlternatively, you can use the command `todo add x1` to add an item with a title of `x1`."
+}
+
 func (s *Todo) list(bot *discord.Session, ctx *discord.MessageCreate, args []string) {
 	s.checkUserPresence(ctx.Author.ID)
-	fields := []*discord.MessageEmbedField{}
 
-	userTODOs := s.getUserTODOs(ctx.Author.ID)
-	for i, item := range userTODOs {
-		value := "ID: " + fmt.Sprint(item.id) + "\n" + item.description
-		fields = append(fields, &discord.MessageEmbedField{
-			Name:  fmt.Sprintf("%d: %s", i+1, item.title),
-			Value: value,
-		})
+	var todos []todoItem
+	var err error
+	if len(args) == 0 {
+		todos, err = s.getActiveTodos(ctx.Author.ID)
+	} else if len(args) > 1 {
+		bot.ChannelMessageSend(ctx.ChannelID, "Couldn't interpret command\n"+s.listHelp())
+		return
+	} else {
+		switch args[0] {
+		case "all":
+			todos, err = s.getAllTodos(ctx.Author.ID)
+		case "active":
+			todos, err = s.getActiveTodos(ctx.Author.ID)
+		case "archive":
+			fallthrough
+		case "archived":
+			todos, err = s.getArchivedTodos(ctx.Author.ID)
+		case "done":
+			fallthrough
+		case "checked":
+			todos, err = s.getDoneTodos(ctx.Author.ID)
+		default:
+			bot.ChannelMessageSend(ctx.ChannelID, "Couldn't interpret command\n"+s.listHelp())
+			return
+		}
 	}
 
-	embed := discord.MessageEmbed{
-		Author: &discord.MessageEmbedAuthor{
-			Name: ctx.Author.Username + "s TODOs",
-		},
-		Color:  todoEmbedColor,
-		Fields: fields,
-		Footer: &discord.MessageEmbedFooter{
-			Text:    "Invoked by " + ctx.Author.Username,
-			IconURL: ctx.Author.AvatarURL(""),
-		},
+	if err != nil {
+		bot.ChannelMessageSend(ctx.ChannelID, fmt.Sprint("Error while trying to list ", ctx.Author.Username, "'s items", err))
+	} else {
+		bot.ChannelMessageSendEmbed(ctx.ChannelID, todosToEmbed(todos, ctx))
 	}
-	bot.ChannelMessageSendEmbed(ctx.ChannelID, &embed)
+}
+
+func (s *Todo) listHelp() string {
+	return "Usage: `todo list [all|active|archived|done]`"
 }
 
 func (s *Todo) done(bot *discord.Session, ctx *discord.MessageCreate, args []string) {
@@ -207,17 +226,77 @@ func (s *Todo) addItem(author, title, description string) {
 	)
 }
 
+// Returns an array of the active todo items for a given user id
+func (s *Todo) getActiveTodos(userId string) ([]todoItem, error) {
+	return s.getUserTODOs(userId, "active")
+}
+
+// Returns an array of the completed todo items for a given user id
+func (s *Todo) getDoneTodos(userId string) ([]todoItem, error) {
+	return s.getUserTODOs(userId, "completed")
+}
+
+// Returns an array of the archived todo items for a given user id
+func (s *Todo) getArchivedTodos(userId string) ([]todoItem, error) {
+	return s.getUserTODOs(userId, "archived")
+}
+
+// Returns an array of all non-archived todo items for a given user id
+func (s *Todo) getAllTodos(userId string) ([]todoItem, error) {
+	todo1, err1 := s.getUserTODOs(userId, "active")
+	if err1 != nil {
+		return nil, err1
+	}
+	todo2, err2 := s.getUserTODOs(userId, "completed")
+	if err2 != nil {
+		return nil, err2
+	}
+	return append(todo1, todo2...), nil
+}
+
+// Returns an embed containing all todo items
+func todosToEmbed(todos []todoItem, ctx *discord.MessageCreate) *discord.MessageEmbed {
+	fields := []*discord.MessageEmbedField{}
+
+	for i, item := range todos {
+		value := "ID: " + fmt.Sprint(item.id) + "\n" + item.description
+		fields = append(fields, &discord.MessageEmbedField{
+			Name:  fmt.Sprintf("%d: %s", i+1, item.title),
+			Value: value,
+		})
+	}
+
+	embed := discord.MessageEmbed{
+		Author: &discord.MessageEmbedAuthor{
+			Name: ctx.Author.Username + "s TODOs",
+		},
+		Color:  todoEmbedColor,
+		Fields: fields,
+		Footer: &discord.MessageEmbedFooter{
+			Text:    "Invoked by " + ctx.Author.Username,
+			IconURL: ctx.Author.AvatarURL(""),
+		},
+	}
+	return &embed
+}
+
 // Returns an array of all active TODOs of a user
-func (s *Todo) getUserTODOs(user string) []todoItem {
+func (s *Todo) getUserTODOs(user, table string) ([]todoItem, error) {
 	items := []todoItem{}
 
-	db, _ := sql.Open("postgres", s.psqlConn)
+	db, err := sql.Open("postgres", s.psqlConn)
+	if err != nil {
+		return nil, err
+	}
 	defer db.Close()
 
-	rows, _ := db.Query(
-		`SELECT t.* FROM todo.task AS t JOIN todo.active AS a ON a.task=t.id WHERE a.discord_user=$1`,
+	rows, err := db.Query(
+		fmt.Sprintf(`SELECT t.* FROM todo.task AS t JOIN todo.%s AS a ON a.task=t.id WHERE a.discord_user=$1`, table),
 		user,
 	)
+	if err != nil {
+		return nil, err
+	}
 
 	for rows.Next() {
 		nextItem := todoItem{}
@@ -225,7 +304,7 @@ func (s *Todo) getUserTODOs(user string) []todoItem {
 		items = append(items, nextItem)
 	}
 
-	return items
+	return items, nil
 }
 
 // Responds to an interaction with the modal for a user to add an item
