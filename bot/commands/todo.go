@@ -29,7 +29,7 @@ const (
 	todoEmbedColor = 0x0BEEF0
 )
 
-func (s *Todo) HandleCommand(bot *discord.Session, ctx *discord.MessageCreate, args []string) {
+func (s Todo) HandleCommand(bot *discord.Session, ctx *discord.MessageCreate, args []string) {
 	if len(args) == 1 {
 		bot.ChannelMessageSend(ctx.ChannelID, s.Help())
 		return
@@ -98,7 +98,7 @@ func (s Todo) Init(args ...interface{}) constants.Command {
 	return &s
 }
 
-func (s *Todo) add(bot *discord.Session, ctx *discord.MessageCreate, args []string) {
+func (s Todo) add(bot *discord.Session, ctx *discord.MessageCreate, args []string) {
 	s.checkUserPresence(ctx.Author.ID)
 	bot.ChannelMessageDelete(ctx.ChannelID, ctx.Message.ID)
 	if len(args) == 0 {
@@ -136,7 +136,7 @@ func (s Todo) addHelp() string {
 	return "Call the `todo add` command with no arguments to add a new TODO item.\nAlternatively, you can use the command `todo add x1` to add an item with a title of `x1`."
 }
 
-func (s *Todo) list(bot *discord.Session, ctx *discord.MessageCreate, args []string) {
+func (s Todo) list(bot *discord.Session, ctx *discord.MessageCreate, args []string) {
 	s.checkUserPresence(ctx.Author.ID)
 
 	var todos []todoItem
@@ -175,11 +175,11 @@ func (s *Todo) list(bot *discord.Session, ctx *discord.MessageCreate, args []str
 	}
 }
 
-func (s *Todo) listHelp() string {
+func (s Todo) listHelp() string {
 	return "Usage: `todo list [all|active|archived|done]`"
 }
 
-func (s *Todo) done(bot *discord.Session, ctx *discord.MessageCreate, args []string) {
+func (s Todo) done(bot *discord.Session, ctx *discord.MessageCreate, args []string) {
 	s.checkUserPresence(ctx.Author.ID)
 
 	if len(args) == 0 { // Send button to launch modal
@@ -198,27 +198,27 @@ func (s *Todo) done(bot *discord.Session, ctx *discord.MessageCreate, args []str
 	}
 }
 
-func (s *Todo) doneHelp() string {
+func (s Todo) doneHelp() string {
 	return "Usage: `todo done [id[,id..]]`\nAlternatively, call `todo done` with no arguments to check off items without having to supply IDs."
 }
 
-func (s *Todo) delete(bot *discord.Session, ctx *discord.MessageCreate, args []string) {
+func (s Todo) delete(bot *discord.Session, ctx *discord.MessageCreate, args []string) {
 	s.checkUserPresence(ctx.Author.ID)
 	bot.ChannelMessageSend(ctx.ChannelID, "todo.remove")
 }
 
-func (s *Todo) subscribe(bot *discord.Session, ctx *discord.MessageCreate, args []string) {
+func (s Todo) subscribe(bot *discord.Session, ctx *discord.MessageCreate, args []string) {
 	s.checkUserPresence(ctx.Author.ID)
 	bot.ChannelMessageSend(ctx.ChannelID, "todo.subscribe")
 }
 
-func (s *Todo) archive(bot *discord.Session, ctx *discord.MessageCreate, args []string) {
+func (s Todo) archive(bot *discord.Session, ctx *discord.MessageCreate, args []string) {
 	s.checkUserPresence(ctx.Author.ID)
 	bot.ChannelMessageSend(ctx.ChannelID, "todo.archive")
 }
 
 // Adds an active todo item
-func (s *Todo) addItem(author, title, description string) {
+func (s Todo) addItem(author, title, description string) {
 	db, _ := sql.Open("postgres", s.psqlConn)
 	defer db.Close()
 
@@ -248,22 +248,22 @@ func (s *Todo) addItem(author, title, description string) {
 }
 
 // Returns an array of the active todo items for a given user id
-func (s *Todo) getActiveTodos(userId string) ([]todoItem, error) {
+func (s Todo) getActiveTodos(userId string) ([]todoItem, error) {
 	return s.getUserTODOs(userId, "active")
 }
 
 // Returns an array of the completed todo items for a given user id
-func (s *Todo) getDoneTodos(userId string) ([]todoItem, error) {
+func (s Todo) getDoneTodos(userId string) ([]todoItem, error) {
 	return s.getUserTODOs(userId, "completed")
 }
 
 // Returns an array of the archived todo items for a given user id
-func (s *Todo) getArchivedTodos(userId string) ([]todoItem, error) {
+func (s Todo) getArchivedTodos(userId string) ([]todoItem, error) {
 	return s.getUserTODOs(userId, "archived")
 }
 
 // Returns an array of all non-archived todo items for a given user id
-func (s *Todo) getAllTodos(userId string) ([]todoItem, error) {
+func (s Todo) getAllTodos(userId string) ([]todoItem, error) {
 	todo1, err1 := s.getUserTODOs(userId, "active")
 	if err1 != nil {
 		return nil, err1
@@ -302,7 +302,7 @@ func todosToEmbed(todos []todoItem, ctx *discord.MessageCreate) *discord.Message
 }
 
 // Returns an array of all active TODOs of a user
-func (s *Todo) getUserTODOs(user, table string) ([]todoItem, error) {
+func (s Todo) getUserTODOs(user, table string) ([]todoItem, error) {
 	items := []todoItem{}
 
 	db, err := sql.Open("postgres", s.psqlConn)
@@ -378,7 +378,7 @@ func (s Todo) changeItemsStatus(userId string, itemIds []string, from, to string
 }
 
 // Responds to an interaction with the modal for a user to add an item
-func (s *Todo) addItemModalCreate(bot *discord.Session, interaction *discord.Interaction) {
+func (s Todo) addItemModalCreate(bot *discord.Session, interaction *discord.Interaction) {
 	interactionId := "todo.add-button-modal:" + interaction.ID
 	bot.InteractionRespond(interaction, &discord.InteractionResponse{
 		Type: discord.InteractionResponseModal,
@@ -462,7 +462,7 @@ func deduplicate(arr []string) []string {
 }
 
 // Checks if a user is present in the database and inserts them if not
-func (s *Todo) checkUserPresence(id string) {
+func (s Todo) checkUserPresence(id string) {
 	db, _ := sql.Open("postgres", s.psqlConn)
 	defer db.Close()
 	rows, _ := db.Query(
