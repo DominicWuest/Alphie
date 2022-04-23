@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -158,6 +159,8 @@ func (s *Todo) list(bot *discord.Session, ctx *discord.MessageCreate, args []str
 		case "done":
 			fallthrough
 		case "checked":
+			fallthrough
+		case "check":
 			todos, err = s.getDoneTodos(ctx.Author.ID)
 		default:
 			bot.ChannelMessageSend(ctx.ChannelID, "Couldn't interpret command\n"+s.listHelp())
@@ -178,7 +181,25 @@ func (s *Todo) listHelp() string {
 
 func (s *Todo) done(bot *discord.Session, ctx *discord.MessageCreate, args []string) {
 	s.checkUserPresence(ctx.Author.ID)
-	bot.ChannelMessageSend(ctx.ChannelID, "todo.done")
+
+	if len(args) == 0 { // Send button to launch modal
+		// TODO
+	} else if len(args) == 1 && args[0] == "help" {
+		bot.ChannelMessageSend(ctx.ChannelID, s.doneHelp())
+	} else { // Parse rest as ids and check them off
+		ids, err := parseIds(args)
+		if err != nil {
+			bot.ChannelMessageSend(ctx.ChannelID, "Error parsing IDs\n"+s.doneHelp())
+			return
+		}
+		if err = s.changeItemsStatus(ctx.Author.ID, ids, "active", "completed"); err != nil {
+			bot.ChannelMessageSend(ctx.ChannelID, fmt.Sprint("Error checking off items: ", err))
+		}
+	}
+}
+
+func (s *Todo) doneHelp() string {
+	return "Usage: `todo done [id[,id..]]`\nAlternatively, call `todo done` with no arguments to check off items without having to supply IDs."
 }
 
 func (s *Todo) delete(bot *discord.Session, ctx *discord.MessageCreate, args []string) {
@@ -307,6 +328,55 @@ func (s *Todo) getUserTODOs(user, table string) ([]todoItem, error) {
 	return items, nil
 }
 
+// Changes the items status from "from" to "to"
+func (s Todo) changeItemsStatus(userId string, itemIds []string, from, to string) error {
+	db, err := sql.Open("postgres", s.psqlConn)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+
+	// Check first if all IDs are valid
+	for _, item := range itemIds {
+		res, err := db.Exec(fmt.Sprintf(`SELECT * FROM todo.%s WHERE discord_user=$1 AND task=$2`, from),
+			userId,
+			item,
+		)
+		if err != nil {
+			return err
+		}
+
+		// User doesn't have active task with given ID
+		if rows, _ := res.RowsAffected(); rows != 1 {
+			return fmt.Errorf("user %s has no active task with id %s", userId, item)
+		}
+	}
+
+	// Check off all items
+	for _, item := range itemIds {
+		// Remove from actives
+		_, err := db.Exec(fmt.Sprintf(`DELETE FROM todo.%s WHERE discord_user=$1 AND task=$2`, from),
+			userId,
+			item,
+		)
+		if err != nil {
+			return err
+		}
+
+		// Put into completed
+		_, err = db.Exec(fmt.Sprintf(`INSERT INTO todo.%s (discord_user, task) VALUES ($1, $2)`, to),
+			userId,
+			item,
+		)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+
+}
+
 // Responds to an interaction with the modal for a user to add an item
 func (s *Todo) addItemModalCreate(bot *discord.Session, interaction *discord.Interaction) {
 	interactionId := "todo.add-button-modal:" + interaction.ID
@@ -358,6 +428,37 @@ func (s *Todo) addItemModalCreate(bot *discord.Session, interaction *discord.Int
 		desc := (*descRow.Components[0].(*discord.TextInput)).Value
 		s.addItem(interaction.Member.User.ID, title, desc)
 	}
+}
+
+// Parses IDs as they get passed to the command
+// Turn IDs into format id[,id]+
+func parseIds(rawArr []string) ([]string, error) {
+	re := regexp.MustCompile(`(\d+)[ ]*,?[ ]*`)
+	ids := re.ReplaceAllString(strings.Trim(strings.Join(rawArr, " "), " "), "$1,")
+	ids = ids[:len(ids)-1] // Get rid of trailing comma
+	if match, _ := regexp.MatchString(`^\d+(,\d+)*$`, ids); !match {
+		return nil, fmt.Errorf("invalid id format")
+	}
+	return deduplicate(strings.Split(ids, ",")), nil
+}
+
+// Deduplicates an array
+func deduplicate(arr []string) []string {
+	var newArr []string
+	for _, item := range arr {
+		duplicate := false
+		for _, setItem := range newArr {
+			if item == setItem {
+				duplicate = true
+				break
+			}
+		}
+		if !duplicate {
+			newArr = append(newArr, item)
+		}
+	}
+
+	return newArr
 }
 
 // Checks if a user is present in the database and inserts them if not
