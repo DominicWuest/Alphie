@@ -15,7 +15,8 @@ import (
 )
 
 type Todo struct {
-	psqlConn string
+	psqlConn        string
+	selectedOptions map[string][]string // Keeps track of items a user selected in a select menu, so we can react on button clicks
 }
 
 type todoItem struct {
@@ -29,7 +30,7 @@ const (
 	todoEmbedColor = 0x0BEEF0
 )
 
-func (s Todo) HandleCommand(bot *discord.Session, ctx *discord.MessageCreate, args []string) {
+func (s *Todo) HandleCommand(bot *discord.Session, ctx *discord.MessageCreate, args []string) {
 	if len(args) == 1 {
 		bot.ChannelMessageSend(ctx.ChannelID, s.Help())
 		return
@@ -40,7 +41,9 @@ func (s Todo) HandleCommand(bot *discord.Session, ctx *discord.MessageCreate, ar
 		s.add(bot, ctx, args[2:])
 	case "list": // List items
 		s.list(bot, ctx, args[2:])
-	case "done": // Sets the status of an item to done
+	case "done":
+		fallthrough
+	case "check":
 		s.done(bot, ctx, args[2:])
 	case "remove": // Removes an item
 		s.delete(bot, ctx, args[2:])
@@ -94,6 +97,8 @@ func (s Todo) Init(args ...interface{}) constants.Command {
 	if !success {
 		fmt.Println("Error connecting to the database:", err)
 	}
+
+	s.selectedOptions = make(map[string][]string)
 
 	return &s
 }
@@ -179,11 +184,11 @@ func (s Todo) listHelp() string {
 	return "Usage: `todo list [all|active|archived|done]`"
 }
 
-func (s Todo) done(bot *discord.Session, ctx *discord.MessageCreate, args []string) {
+func (s *Todo) done(bot *discord.Session, ctx *discord.MessageCreate, args []string) {
 	s.checkUserPresence(ctx.Author.ID)
 
 	if len(args) == 0 { // Send button to launch modal
-		// TODO
+		s.sendDoneSelectMessage(bot, ctx)
 	} else if len(args) == 1 && args[0] == "help" {
 		bot.ChannelMessageSend(ctx.ChannelID, s.doneHelp())
 	} else { // Parse rest as ids and check them off
@@ -427,6 +432,118 @@ func (s Todo) addItemModalCreate(bot *discord.Session, interaction *discord.Inte
 		descRow := *interaction.ModalSubmitData().Components[1].(*discord.ActionsRow)
 		desc := (*descRow.Components[0].(*discord.TextInput)).Value
 		s.addItem(interaction.Member.User.ID, title, desc)
+	}
+}
+
+// Responds to an interaction with the modal for a user to mark multiple items as done at once
+func (s *Todo) sendDoneSelectMessage(bot *discord.Session, ctx *discord.MessageCreate) {
+	interactionId := "todo.done-message:" + ctx.Message.ID
+
+	items, err := s.getActiveTodos(ctx.Author.ID)
+	if err != nil {
+		bot.ChannelMessageSend(ctx.ChannelID, fmt.Sprint("Couldn't create message: ", err))
+		return
+	} else if len(items) == 0 {
+		bot.ChannelMessageSendReply(ctx.ChannelID, "You have no active TODO items", ctx.Reference())
+		return
+	}
+
+	options := []discord.SelectMenuOption{}
+	for _, item := range items {
+		label := item.title
+		description := item.description
+
+		if len(label) > 100 {
+			label = label[:97] + "..."
+		}
+		if len(description) > 100 {
+			description = description[:97] + "..."
+		}
+
+		options = append(options, discord.SelectMenuOption{
+			Label:       label,
+			Value:       fmt.Sprintf("%d", item.id),
+			Description: description,
+		})
+	}
+
+	msg, _ := bot.ChannelMessageSendComplex(ctx.ChannelID, &discord.MessageSend{
+		Content: ctx.Author.Mention() + ", please mark which items you completed.",
+		Components: []discord.MessageComponent{
+			discord.ActionsRow{
+				Components: []discord.MessageComponent{
+					discord.SelectMenu{
+						CustomID:    interactionId,
+						Placeholder: "Completed Items",
+						MinValues:   new(int), // 0
+						MaxValues:   len(items),
+						Options:     options,
+					},
+				},
+			},
+			discord.ActionsRow{
+				Components: []discord.MessageComponent{
+					discord.Button{
+						Label:    constants.Emojis["success"],
+						Style:    discord.SuccessButton,
+						CustomID: "todo.done-message-submit:" + ctx.Message.ID,
+					},
+					discord.Button{
+						Label:    constants.Emojis["fail"],
+						Style:    discord.DangerButton,
+						CustomID: "todo.done-message-cancel:" + ctx.Message.ID,
+					},
+				},
+			},
+		},
+	})
+
+	// Callback for select menu
+	constants.Handlers.MessageComponents[interactionId] = func(interaction *discord.Interaction) {
+		bot.InteractionRespond(interaction, &discord.InteractionResponse{
+			Type: discord.InteractionResponseDeferredMessageUpdate,
+		})
+		if interaction.Member.User.ID != ctx.Author.ID {
+			return
+		}
+
+		s.selectedOptions[interactionId] = interaction.MessageComponentData().Values
+	}
+
+	// Callback for submit button
+	constants.Handlers.MessageComponents["todo.done-message-submit:"+ctx.Message.ID] = func(interaction *discord.Interaction) {
+		bot.InteractionRespond(interaction, &discord.InteractionResponse{
+			Type: discord.InteractionResponseDeferredMessageUpdate,
+		})
+		if interaction.Member.User.ID != ctx.Author.ID {
+			return
+		}
+
+		bot.ChannelMessageDelete(ctx.ChannelID, msg.ID)
+
+		s.changeItemsStatus(ctx.Author.ID, s.selectedOptions[interactionId], "active", "completed")
+
+		delete(s.selectedOptions, interactionId)
+		delete(constants.Handlers.MessageComponents, interactionId)
+		delete(constants.Handlers.MessageComponents, "todo.done-message-submit:"+ctx.Message.ID)
+		delete(constants.Handlers.MessageComponents, "todo.done-message-cancel:"+ctx.Message.ID)
+	}
+
+	// Callback for cancel button
+	constants.Handlers.MessageComponents["todo.done-message-cancel:"+ctx.Message.ID] = func(interaction *discord.Interaction) {
+		bot.InteractionRespond(interaction, &discord.InteractionResponse{
+			Type: discord.InteractionResponseDeferredMessageUpdate,
+		})
+		if interaction.Member.User.ID != ctx.Author.ID {
+			return
+		}
+
+		bot.ChannelMessageDelete(ctx.ChannelID, msg.ID)
+
+		delete(s.selectedOptions, interactionId)
+		delete(constants.Handlers.MessageComponents, interactionId)
+		delete(constants.Handlers.MessageComponents, "todo.done-message-submit:"+ctx.Message.ID)
+		delete(constants.Handlers.MessageComponents, "todo.done-message-cancel:"+ctx.Message.ID)
 	}
 }
 
