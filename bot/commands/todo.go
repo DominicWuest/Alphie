@@ -134,6 +134,9 @@ func (s Todo) add(bot *discord.Session, ctx *discord.MessageCreate, args []strin
 		bot.ChannelMessageSend(ctx.ChannelID, s.addHelp())
 	} else { // Add new item with title
 		s.addItem(ctx.Author.ID, strings.Join(args, " "), "")
+		msg, _ := bot.ChannelMessageSend(ctx.ChannelID, "Successfully added item with title "+strings.Join(args, " "))
+		time.Sleep(1500 * time.Millisecond)
+		bot.ChannelMessageDelete(msg.ChannelID, msg.ID)
 	}
 }
 
@@ -143,6 +146,8 @@ func (s Todo) addHelp() string {
 
 func (s Todo) list(bot *discord.Session, ctx *discord.MessageCreate, args []string) {
 	s.checkUserPresence(ctx.Author.ID)
+
+	bot.ChannelMessageDelete(ctx.ChannelID, ctx.Message.ID)
 
 	var todos []todoItem
 	var err error
@@ -189,17 +194,31 @@ func (s *Todo) done(bot *discord.Session, ctx *discord.MessageCreate, args []str
 
 	if len(args) == 0 { // Send button to launch modal
 		s.sendDoneSelectMessage(bot, ctx)
+		return
 	} else if len(args) == 1 && args[0] == "help" {
 		bot.ChannelMessageSend(ctx.ChannelID, s.doneHelp())
+		time.Sleep(1500 * time.Millisecond)
+		bot.ChannelMessageDelete(ctx.ChannelID, ctx.Message.ID)
 	} else { // Parse rest as ids and check them off
 		ids, err := parseIds(args)
 		if err != nil {
-			bot.ChannelMessageSend(ctx.ChannelID, "Error parsing IDs\n"+s.doneHelp())
+			msg, _ := bot.ChannelMessageSend(ctx.ChannelID, "Error parsing IDs\n"+s.doneHelp())
+			time.Sleep(1500 * time.Millisecond)
+			bot.ChannelMessageDelete(ctx.ChannelID, ctx.Message.ID)
+			bot.ChannelMessageDelete(ctx.ChannelID, msg.ID)
 			return
 		}
 		if err = s.changeItemsStatus(ctx.Author.ID, ids, "active", "completed"); err != nil {
-			bot.ChannelMessageSend(ctx.ChannelID, fmt.Sprint("Error checking off items: ", err))
+			msg, _ := bot.ChannelMessageSend(ctx.ChannelID, fmt.Sprint("Error checking off items: ", err))
+			time.Sleep(1500 * time.Millisecond)
+			bot.ChannelMessageDelete(ctx.ChannelID, ctx.Message.ID)
+			bot.ChannelMessageDelete(ctx.ChannelID, msg.ID)
+			return
 		}
+		msg, _ := bot.ChannelMessageSend(ctx.ChannelID, "Successfully marked "+strings.Join(ids, ", ")+" as done")
+		time.Sleep(1500 * time.Millisecond)
+		bot.ChannelMessageDelete(ctx.ChannelID, ctx.Message.ID)
+		bot.ChannelMessageDelete(ctx.ChannelID, msg.ID)
 	}
 }
 
@@ -285,7 +304,7 @@ func todosToEmbed(todos []todoItem, ctx *discord.MessageCreate) *discord.Message
 	fields := []*discord.MessageEmbedField{}
 
 	for i, item := range todos {
-		value := "ID: " + fmt.Sprint(item.id) + "\n" + item.description
+		value := "`ID: " + fmt.Sprint(item.id, "` ", item.description)
 		fields = append(fields, &discord.MessageEmbedField{
 			Name:  fmt.Sprintf("%d: %s", i+1, item.title),
 			Value: value,
@@ -441,12 +460,24 @@ func (s *Todo) sendDoneSelectMessage(bot *discord.Session, ctx *discord.MessageC
 
 	items, err := s.getActiveTodos(ctx.Author.ID)
 	if err != nil {
-		bot.ChannelMessageSend(ctx.ChannelID, fmt.Sprint("Couldn't create message: ", err))
+		msg, _ := bot.ChannelMessageSend(ctx.ChannelID, fmt.Sprint("Couldn't create message: ", err))
+
+		time.Sleep(1500 * time.Millisecond)
+
+		bot.ChannelMessageDelete(ctx.ChannelID, ctx.Message.ID)
+		bot.ChannelMessageDelete(ctx.ChannelID, msg.ID)
 		return
 	} else if len(items) == 0 {
-		bot.ChannelMessageSendReply(ctx.ChannelID, "You have no active TODO items", ctx.Reference())
+		msg, _ := bot.ChannelMessageSendReply(ctx.ChannelID, "You have no active TODO items", ctx.Reference())
+
+		time.Sleep(1500 * time.Millisecond)
+
+		bot.ChannelMessageDelete(ctx.ChannelID, ctx.Message.ID)
+		bot.ChannelMessageDelete(ctx.ChannelID, msg.ID)
 		return
 	}
+
+	bot.ChannelMessageDelete(ctx.ChannelID, ctx.Message.ID)
 
 	options := []discord.SelectMenuOption{}
 	for _, item := range items {
@@ -519,7 +550,16 @@ func (s *Todo) sendDoneSelectMessage(bot *discord.Session, ctx *discord.MessageC
 			return
 		}
 
-		bot.ChannelMessageDelete(ctx.ChannelID, msg.ID)
+		content := "Successfully marked off " + strings.Join(s.selectedOptions[interactionId], ", ") + " as done"
+		if len(s.selectedOptions[interactionId]) == 0 {
+			content = "Didn't mark any items as done"
+		}
+		bot.ChannelMessageEditComplex(&discord.MessageEdit{
+			Content:    &content,
+			Components: []discord.MessageComponent{},
+			ID:         msg.ID,
+			Channel:    ctx.ChannelID,
+		})
 
 		s.changeItemsStatus(ctx.Author.ID, s.selectedOptions[interactionId], "active", "completed")
 
@@ -527,6 +567,10 @@ func (s *Todo) sendDoneSelectMessage(bot *discord.Session, ctx *discord.MessageC
 		delete(constants.Handlers.MessageComponents, interactionId)
 		delete(constants.Handlers.MessageComponents, "todo.done-message-submit:"+ctx.Message.ID)
 		delete(constants.Handlers.MessageComponents, "todo.done-message-cancel:"+ctx.Message.ID)
+
+		time.Sleep(1500 * time.Millisecond)
+
+		bot.ChannelMessageDelete(ctx.ChannelID, msg.ID)
 	}
 
 	// Callback for cancel button
@@ -538,12 +582,22 @@ func (s *Todo) sendDoneSelectMessage(bot *discord.Session, ctx *discord.MessageC
 			return
 		}
 
-		bot.ChannelMessageDelete(ctx.ChannelID, msg.ID)
+		content := "Cancelled"
+		bot.ChannelMessageEditComplex(&discord.MessageEdit{
+			Content:    &content,
+			Components: []discord.MessageComponent{},
+			ID:         msg.ID,
+			Channel:    ctx.ChannelID,
+		})
 
 		delete(s.selectedOptions, interactionId)
 		delete(constants.Handlers.MessageComponents, interactionId)
 		delete(constants.Handlers.MessageComponents, "todo.done-message-submit:"+ctx.Message.ID)
 		delete(constants.Handlers.MessageComponents, "todo.done-message-cancel:"+ctx.Message.ID)
+
+		time.Sleep(1500 * time.Millisecond)
+
+		bot.ChannelMessageDelete(ctx.ChannelID, msg.ID)
 	}
 }
 
