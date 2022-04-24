@@ -11,7 +11,7 @@ import (
 	"github.com/DominicWuest/Alphie/constants"
 
 	discord "github.com/bwmarrin/discordgo"
-	_ "github.com/lib/pq"
+	"github.com/lib/pq"
 )
 
 type Todo struct {
@@ -27,7 +27,8 @@ type todoItem struct {
 }
 
 const (
-	todoEmbedColor = 0x0BEEF0
+	todoEmbedColor     = 0x0BEEF0
+	messageDeleteDelay = 5000 * time.Millisecond
 )
 
 func (s *Todo) HandleCommand(bot *discord.Session, ctx *discord.MessageCreate, args []string) {
@@ -138,7 +139,7 @@ func (s Todo) add(bot *discord.Session, ctx *discord.MessageCreate, args []strin
 	} else { // Add new item with title
 		s.addItem(ctx.Author.ID, strings.Join(args, " "), "")
 		msg, _ := bot.ChannelMessageSend(ctx.ChannelID, "Successfully added item with title "+strings.Join(args, " "))
-		time.Sleep(1500 * time.Millisecond)
+		time.Sleep(messageDeleteDelay)
 		bot.ChannelMessageDelete(msg.ChannelID, msg.ID)
 	}
 }
@@ -203,26 +204,26 @@ func (s *Todo) done(bot *discord.Session, ctx *discord.MessageCreate, args []str
 		return
 	} else if len(args) == 1 && args[0] == "help" {
 		bot.ChannelMessageSend(ctx.ChannelID, s.doneHelp())
-		time.Sleep(1500 * time.Millisecond)
+		time.Sleep(messageDeleteDelay)
 		bot.ChannelMessageDelete(ctx.ChannelID, ctx.Message.ID)
 	} else { // Parse rest as ids and check them off
 		ids, err := parseIds(args)
 		if err != nil {
 			msg, _ := bot.ChannelMessageSend(ctx.ChannelID, "Error parsing IDs\n"+s.doneHelp())
-			time.Sleep(1500 * time.Millisecond)
+			time.Sleep(messageDeleteDelay)
 			bot.ChannelMessageDelete(ctx.ChannelID, ctx.Message.ID)
 			bot.ChannelMessageDelete(ctx.ChannelID, msg.ID)
 			return
 		}
 		if err = s.changeItemsStatus(ctx.Author.ID, ids, "active", "completed"); err != nil {
 			msg, _ := bot.ChannelMessageSend(ctx.ChannelID, fmt.Sprint("Error checking off items: ", err))
-			time.Sleep(1500 * time.Millisecond)
+			time.Sleep(messageDeleteDelay)
 			bot.ChannelMessageDelete(ctx.ChannelID, ctx.Message.ID)
 			bot.ChannelMessageDelete(ctx.ChannelID, msg.ID)
 			return
 		}
 		msg, _ := bot.ChannelMessageSend(ctx.ChannelID, "Successfully marked "+strings.Join(ids, ", ")+" as done")
-		time.Sleep(1500 * time.Millisecond)
+		time.Sleep(messageDeleteDelay)
 		bot.ChannelMessageDelete(ctx.ChannelID, ctx.Message.ID)
 		bot.ChannelMessageDelete(ctx.ChannelID, msg.ID)
 	}
@@ -388,40 +389,50 @@ func (s Todo) changeItemsStatus(userId string, itemIds []string, from, to string
 	defer db.Close()
 
 	// Check first if all IDs are valid
-	for _, item := range itemIds {
-		res, err := db.Exec(fmt.Sprintf(`SELECT * FROM todo.%s WHERE discord_user=$1 AND task=$2`, from),
-			userId,
-			item,
-		)
-		if err != nil {
-			return err
-		}
+	rows, err := db.Query(fmt.Sprintf(`SELECT task FROM todo.%s WHERE discord_user=$1 AND task = any($2)`, from),
+		userId,
+		pq.Array(itemIds),
+	)
+	if err != nil {
+		return err
+	}
 
-		// User doesn't have active task with given ID
-		if rows, _ := res.RowsAffected(); rows != 1 {
-			return fmt.Errorf("user %s has no active task with id %s", userId, item)
+	// For checking for invalid IDs
+	idsCopy := make([]string, len(itemIds))
+	copy(idsCopy, itemIds)
+
+	for rows.Next() {
+		var item string
+		rows.Scan(&item)
+		for i := range idsCopy {
+			if idsCopy[i] == item {
+				idsCopy = append(idsCopy[:i], idsCopy[i+1:]...)
+				break
+			}
 		}
 	}
 
-	// Check off all items
-	for _, item := range itemIds {
-		// Remove from actives
-		_, err := db.Exec(fmt.Sprintf(`DELETE FROM todo.%s WHERE discord_user=$1 AND task=$2`, from),
-			userId,
-			item,
-		)
-		if err != nil {
-			return err
-		}
+	// Check for wrong ID supplied
+	if len(idsCopy) != 0 {
+		return fmt.Errorf("user %s has no active task with id %s", userId, strings.Join(idsCopy, ", "))
+	}
 
-		// Put into completed
-		_, err = db.Exec(fmt.Sprintf(`INSERT INTO todo.%s (discord_user, task) VALUES ($1, $2)`, to),
-			userId,
-			item,
-		)
-		if err != nil {
-			return err
-		}
+	// Delete active items
+	_, err = db.Exec(fmt.Sprintf(`DELETE FROM todo.%s WHERE discord_user=$1 AND task=any($2)`, from),
+		userId,
+		pq.Array(itemIds),
+	)
+	if err != nil {
+		return err
+	}
+
+	// Put all items into completed
+	_, err = db.Exec(fmt.Sprintf(`INSERT INTO todo.%s (discord_user, task) VALUES ($1, UNNEST($2::INTEGER[]))`, to),
+		userId,
+		pq.Array(itemIds),
+	)
+	if err != nil {
+		return err
 	}
 
 	return nil
@@ -489,7 +500,7 @@ func (s *Todo) sendDoneSelectMessage(bot *discord.Session, ctx *discord.MessageC
 	if err != nil {
 		msg, _ := bot.ChannelMessageSend(ctx.ChannelID, fmt.Sprint("Couldn't create message: ", err))
 
-		time.Sleep(1500 * time.Millisecond)
+		time.Sleep(messageDeleteDelay)
 
 		bot.ChannelMessageDelete(ctx.ChannelID, ctx.Message.ID)
 		bot.ChannelMessageDelete(ctx.ChannelID, msg.ID)
@@ -497,7 +508,7 @@ func (s *Todo) sendDoneSelectMessage(bot *discord.Session, ctx *discord.MessageC
 	} else if len(items) == 0 {
 		msg, _ := bot.ChannelMessageSendReply(ctx.ChannelID, "You have no active TODO items", ctx.Reference())
 
-		time.Sleep(1500 * time.Millisecond)
+		time.Sleep(messageDeleteDelay)
 
 		bot.ChannelMessageDelete(ctx.ChannelID, ctx.Message.ID)
 		bot.ChannelMessageDelete(ctx.ChannelID, msg.ID)
@@ -595,7 +606,7 @@ func (s *Todo) sendDoneSelectMessage(bot *discord.Session, ctx *discord.MessageC
 		delete(constants.Handlers.MessageComponents, "todo.done-message-submit:"+ctx.Message.ID)
 		delete(constants.Handlers.MessageComponents, "todo.done-message-cancel:"+ctx.Message.ID)
 
-		time.Sleep(1500 * time.Millisecond)
+		time.Sleep(messageDeleteDelay)
 
 		bot.ChannelMessageDelete(ctx.ChannelID, msg.ID)
 	}
@@ -622,7 +633,7 @@ func (s *Todo) sendDoneSelectMessage(bot *discord.Session, ctx *discord.MessageC
 		delete(constants.Handlers.MessageComponents, "todo.done-message-submit:"+ctx.Message.ID)
 		delete(constants.Handlers.MessageComponents, "todo.done-message-cancel:"+ctx.Message.ID)
 
-		time.Sleep(1500 * time.Millisecond)
+		time.Sleep(messageDeleteDelay)
 
 		bot.ChannelMessageDelete(ctx.ChannelID, msg.ID)
 	}
