@@ -199,7 +199,7 @@ func (s Todo) listHelp() string {
 func (s *Todo) done(bot *discord.Session, ctx *discord.MessageCreate, args []string) {
 	s.checkUserPresence(ctx.Author.ID)
 
-	if len(args) == 0 { // Send button to launch modal
+	if len(args) == 0 { // Send message to select items in bulk
 		bot.ChannelMessageDelete(ctx.ChannelID, ctx.Message.ID)
 		items, err := s.getActiveTodos(ctx.Author.ID)
 		if err != nil {
@@ -255,7 +255,7 @@ func (s *Todo) done(bot *discord.Session, ctx *discord.MessageCreate, args []str
 			},
 		)
 		return
-	} else if len(args) == 1 && args[0] == "help" {
+	} else if len(args) == 1 && args[0] == "help" { // Send help message
 		bot.ChannelMessageSend(ctx.ChannelID, s.doneHelp())
 		time.Sleep(messageDeleteDelay)
 		bot.ChannelMessageDelete(ctx.ChannelID, ctx.Message.ID)
