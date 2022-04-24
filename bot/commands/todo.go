@@ -51,8 +51,11 @@ func (s *Todo) HandleCommand(bot *discord.Session, ctx *discord.MessageCreate, a
 		s.subscribe(bot, ctx, args[2:])
 	case "archive": // Archives an item
 		s.archive(bot, ctx, args[2:])
-	default:
+	case "help":
 		bot.ChannelMessageSend(ctx.ChannelID, s.Help())
+		bot.ChannelMessageDelete(ctx.ChannelID, ctx.Message.ID)
+	default:
+		bot.ChannelMessageSend(ctx.ChannelID, "Couldn't interpret command\n"+s.Help())
 	}
 }
 
@@ -61,7 +64,7 @@ func (s Todo) Desc() string {
 }
 
 func (s Todo) Help() string {
-	return "Placeholder"
+	return "Available commands: `todo [add|list|done|remove|subscribe|archive]`\nUse the command `todo [cmd] help` to get more info about the command."
 }
 
 func (s Todo) Init(args ...interface{}) constants.Command {
@@ -130,7 +133,7 @@ func (s Todo) add(bot *discord.Session, ctx *discord.MessageCreate, args []strin
 			}
 			s.addItemModalCreate(bot, interaction)
 		}
-	} else if strings.ToLower(args[0]) == "help" {
+	} else if len(args) == 1 && args[0] == "help" {
 		bot.ChannelMessageSend(ctx.ChannelID, s.addHelp())
 	} else { // Add new item with title
 		s.addItem(ctx.Author.ID, strings.Join(args, " "), "")
@@ -172,6 +175,9 @@ func (s Todo) list(bot *discord.Session, ctx *discord.MessageCreate, args []stri
 			fallthrough
 		case "check":
 			todos, err = s.getDoneTodos(ctx.Author.ID)
+		case "help":
+			bot.ChannelMessageSend(ctx.ChannelID, s.listHelp())
+			return
 		default:
 			bot.ChannelMessageSend(ctx.ChannelID, "Couldn't interpret command\n"+s.listHelp())
 			return
@@ -228,17 +234,38 @@ func (s Todo) doneHelp() string {
 
 func (s Todo) delete(bot *discord.Session, ctx *discord.MessageCreate, args []string) {
 	s.checkUserPresence(ctx.Author.ID)
+	if len(args) == 1 && args[0] == "help" {
+		bot.ChannelMessageSend(ctx.ChannelID, s.deleteHelp())
+	}
 	bot.ChannelMessageSend(ctx.ChannelID, "todo.remove")
+}
+
+func (s Todo) deleteHelp() string {
+	return "Under construction"
 }
 
 func (s Todo) subscribe(bot *discord.Session, ctx *discord.MessageCreate, args []string) {
 	s.checkUserPresence(ctx.Author.ID)
+	if len(args) == 1 && args[0] == "help" {
+		bot.ChannelMessageSend(ctx.ChannelID, s.subscribeHelp())
+	}
 	bot.ChannelMessageSend(ctx.ChannelID, "todo.subscribe")
+}
+
+func (s Todo) subscribeHelp() string {
+	return "Under construction"
 }
 
 func (s Todo) archive(bot *discord.Session, ctx *discord.MessageCreate, args []string) {
 	s.checkUserPresence(ctx.Author.ID)
+	if len(args) == 1 && args[0] == "help" {
+		bot.ChannelMessageSend(ctx.ChannelID, s.archiveHelp())
+	}
 	bot.ChannelMessageSend(ctx.ChannelID, "todo.archive")
+}
+
+func (s Todo) archiveHelp() string {
+	return "Under construction"
 }
 
 // Adds an active todo item
