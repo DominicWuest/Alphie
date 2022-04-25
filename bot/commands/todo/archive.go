@@ -1,11 +1,13 @@
 package todo
 
 import (
+	"database/sql"
 	"fmt"
 	"strings"
 	"time"
 
 	discord "github.com/bwmarrin/discordgo"
+	"github.com/lib/pq"
 )
 
 func (s Todo) archiveHelp() string {
@@ -97,4 +99,64 @@ func (s Todo) Archive(bot *discord.Session, ctx *discord.MessageCreate, args []s
 		bot.ChannelMessageDelete(ctx.ChannelID, ctx.Message.ID)
 		bot.ChannelMessageDelete(ctx.ChannelID, msg.ID)
 	}
+}
+
+// Archives active/completed items from the user
+func (s Todo) archiveItems(userId string, items []string) error {
+	active, err := s.getActiveTodos(userId)
+	if err != nil {
+		return err
+	}
+	completed, err := s.getDoneTodos(userId)
+	if err != nil {
+		return err
+	}
+
+	userItems := append(active, completed...)
+
+	// For checking for invalid IDs
+	itemsCopy := make([]string, len(items))
+	copy(itemsCopy, items)
+
+	for _, item := range userItems {
+		for i := range itemsCopy {
+			if itemsCopy[i] == fmt.Sprint(item.ID) {
+				itemsCopy = append(itemsCopy[:i], itemsCopy[i+1:]...)
+				break
+			}
+		}
+	}
+
+	// Check for wrong ID supplied
+	if len(itemsCopy) != 0 {
+		return fmt.Errorf("user %s has no active or completed task with id %s", userId, strings.Join(itemsCopy, ", "))
+	}
+
+	db, err := sql.Open("postgres", s.PsqlConn)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+
+	// Delete items
+	for _, table := range []string{"active", "completed"} {
+		_, err = db.Exec(fmt.Sprintf(`DELETE FROM todo.%s WHERE discord_user=$1 AND task=any($2)`, table),
+			userId,
+			pq.Array(items),
+		)
+		if err != nil {
+			return err
+		}
+	}
+
+	// Put all items into archived
+	_, err = db.Exec(`INSERT INTO todo.archived (discord_user, task) VALUES ($1, UNNEST($2::INTEGER[]))`,
+		userId,
+		pq.Array(items),
+	)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }

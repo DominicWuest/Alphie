@@ -1,6 +1,7 @@
 package todo
 
 import (
+	"database/sql"
 	"strings"
 	"time"
 
@@ -100,4 +101,34 @@ func (s Todo) addItemModalCreate(bot *discord.Session, interaction *discord.Inte
 		desc := (*descRow.Components[0].(*discord.TextInput)).Value
 		s.addItem(interaction.Member.User.ID, title, desc)
 	}
+}
+
+// Adds an active todo item
+func (s Todo) addItem(author, title, description string) {
+	db, _ := sql.Open("postgres", s.PsqlConn)
+	defer db.Close()
+
+	taskId := 0
+	rows, _ := db.Query(`SELECT MAX(id) FROM todo.task`)
+	if rows.Next() {
+		rows.Scan(&taskId)
+		rows.Close()
+		taskId++
+	}
+
+	// Insert task into task table
+	db.Exec(
+		`INSERT INTO todo.task (id, creator, title, description) VALUES ($1, $2, $3, $4)`,
+		taskId,
+		author,
+		title,
+		description,
+	)
+
+	// Insert task into active
+	db.Exec(
+		`INSERT INTO todo.active (discord_user, task) VALUES ($1, $2)`,
+		author,
+		taskId,
+	)
 }

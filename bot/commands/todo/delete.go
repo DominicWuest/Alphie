@@ -1,11 +1,13 @@
 package todo
 
 import (
+	"database/sql"
 	"fmt"
 	"strings"
 	"time"
 
 	discord "github.com/bwmarrin/discordgo"
+	"github.com/lib/pq"
 )
 
 func (s Todo) deleteHelp() string {
@@ -95,4 +97,49 @@ func (s Todo) Delete(bot *discord.Session, ctx *discord.MessageCreate, args []st
 		bot.ChannelMessageDelete(ctx.ChannelID, ctx.Message.ID)
 		bot.ChannelMessageDelete(ctx.ChannelID, msg.ID)
 	}
+}
+
+// Deletes todo items from the user
+func (s Todo) deleteItems(userId string, items []string) error {
+	userItems, err := s.getAllTodos(userId)
+	if err != nil {
+		return err
+	}
+
+	// For checking for invalid IDs
+	itemsCopy := make([]string, len(items))
+	copy(itemsCopy, items)
+
+	for _, item := range userItems {
+		for i := range itemsCopy {
+			if itemsCopy[i] == fmt.Sprint(item.ID) {
+				itemsCopy = append(itemsCopy[:i], itemsCopy[i+1:]...)
+				break
+			}
+		}
+	}
+
+	// Check for wrong ID supplied
+	if len(itemsCopy) != 0 {
+		return fmt.Errorf("user %s has no task with id %s", userId, strings.Join(itemsCopy, ", "))
+	}
+
+	db, err := sql.Open("postgres", s.PsqlConn)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+
+	// Delete items
+	for _, table := range []string{"active", "completed", "archived"} {
+		_, err = db.Exec(fmt.Sprintf(`DELETE FROM todo.%s WHERE discord_user=$1 AND task=any($2)`, table),
+			userId,
+			pq.Array(items),
+		)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
