@@ -285,7 +285,7 @@ func (s *Todo) done(bot *discord.Session, ctx *discord.MessageCreate, args []str
 }
 
 func (s Todo) doneHelp() string {
-	return "Usage: `todo done [id[,id..]]`\nAlternatively, call `todo done` with no arguments to check off items without having to supply IDs."
+	return "Usage: `todo done [id[,id..]]`\nAlternatively, call `todo done` with no arguments to check off items in bulk without having to supply IDs."
 }
 
 func (s Todo) delete(bot *discord.Session, ctx *discord.MessageCreate, args []string) {
@@ -374,7 +374,7 @@ func (s Todo) delete(bot *discord.Session, ctx *discord.MessageCreate, args []st
 }
 
 func (s Todo) deleteHelp() string {
-	return "Under construction"
+	return "Usage: `todo delete [id[,id..]]`\nAlternatively, call `todo delete` with no arguments to delete items in bulk without having to supply IDs."
 }
 
 func (s Todo) subscribe(bot *discord.Session, ctx *discord.MessageCreate, args []string) {
@@ -391,7 +391,7 @@ func (s Todo) subscribeHelp() string {
 
 func (s Todo) archive(bot *discord.Session, ctx *discord.MessageCreate, args []string) {
 	s.checkUserPresence(ctx.Author.ID)
-	if len(args) == 0 { // Send message to delete items in bulk
+	if len(args) == 0 { // Send message to archive items in bulk
 		actives, err1 := s.getActiveTodos(ctx.Author.ID)
 		completed, err2 := s.getDoneTodos(ctx.Author.ID)
 		items := append(actives, completed...)
@@ -453,7 +453,7 @@ func (s Todo) archive(bot *discord.Session, ctx *discord.MessageCreate, args []s
 	} else if len(args) == 1 && args[0] == "help" { // Send help message
 		bot.ChannelMessageDelete(ctx.ChannelID, ctx.Message.ID)
 		bot.ChannelMessageSend(ctx.ChannelID, s.archiveHelp())
-	} else { // Parse rest as IDs and delete them
+	} else { // Parse rest as IDs and archive them
 		ids, err := parseIds(args)
 		if err != nil {
 			msg, _ := bot.ChannelMessageSend(ctx.ChannelID, "Error parsing IDs\n"+s.doneHelp())
@@ -477,7 +477,7 @@ func (s Todo) archive(bot *discord.Session, ctx *discord.MessageCreate, args []s
 }
 
 func (s Todo) archiveHelp() string {
-	return "Under construction"
+	return "Usage: `todo archive [id[,id..]]`\nAlternatively, call `todo archive` with no arguments to archive items in bulk without having to supply IDs."
 }
 
 // Adds an active todo item
@@ -649,6 +649,7 @@ func (s Todo) changeItemsStatus(userId string, itemIds []string, from, to string
 	return nil
 }
 
+// Deletes todo items from the user
 func (s Todo) deleteItems(userId string, items []string) error {
 	userItems, err := s.getAllTodos(userId)
 	if err != nil {
@@ -693,6 +694,7 @@ func (s Todo) deleteItems(userId string, items []string) error {
 	return nil
 }
 
+// Archives active/completed items from the user
 func (s Todo) archiveItems(userId string, items []string) error {
 	active, err := s.getActiveTodos(userId)
 	if err != nil {
