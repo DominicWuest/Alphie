@@ -89,6 +89,12 @@ func (s Todo) Init(args ...interface{}) constants.Command {
 		fmt.Println("Error connecting to the database:", err)
 	}
 
+	sx := (subcommands.Todo)(s)
+	err = sx.InitialiseSubscriptions()
+	if err != nil {
+		fmt.Println("Error initialising subscriptions: ", err)
+	}
+
 	s.SelectedOptions = make(map[string][]string)
 
 	return &s
