@@ -108,22 +108,17 @@ func (s Todo) addItem(author, title, description string) {
 	db, _ := sql.Open("postgres", s.PsqlConn)
 	defer db.Close()
 
-	taskId := 0
-	rows, _ := db.Query(`SELECT MAX(id) FROM todo.task`)
-	if rows.Next() {
-		rows.Scan(&taskId)
-		rows.Close()
-		taskId++
-	}
-
-	// Insert task into task table
-	db.Exec(
-		`INSERT INTO todo.task (id, creator, title, description) VALUES ($1, $2, $3, $4)`,
-		taskId,
+	// Insert task into task table and get its ID
+	rows, _ := db.Query(
+		`INSERT INTO todo.task (creator, title, description) VALUES ($1, $2, $3) RETURNING id`,
 		author,
 		title,
 		description,
 	)
+	var taskId int
+	if rows.Next() {
+		rows.Scan(&taskId)
+	}
 
 	// Insert task into active
 	db.Exec(
