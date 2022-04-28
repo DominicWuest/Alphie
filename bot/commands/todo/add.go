@@ -6,7 +6,9 @@ import (
 	"time"
 
 	"github.com/DominicWuest/Alphie/constants"
+
 	discord "github.com/bwmarrin/discordgo"
+	_ "github.com/lib/pq"
 )
 
 func (s Todo) addHelp() string {
@@ -108,17 +110,7 @@ func (s Todo) addItem(author, title, description string) {
 	db, _ := sql.Open("postgres", s.PsqlConn)
 	defer db.Close()
 
-	// Insert task into task table and get its ID
-	rows, _ := db.Query(
-		`INSERT INTO todo.task (creator, title, description) VALUES ($1, $2, $3) RETURNING id`,
-		author,
-		title,
-		description,
-	)
-	var taskId int
-	if rows.Next() {
-		rows.Scan(&taskId)
-	}
+	taskId, _ := s.CreateTask(author, title, description)
 
 	// Insert task into active
 	db.Exec(
