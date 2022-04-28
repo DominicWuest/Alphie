@@ -37,6 +37,8 @@ CREATE TABLE todo.subscription (
     id VARCHAR(20) NOT NULL,
     subscription_name VARCHAR(128) NOT NULL,
     schedule VARCHAR(64) NOT NULL,
+    semester CHAR NOT NULL,
+    CHECK ((schedule<>'' AND semester IN ('F', 'H', 'B', 'N')) OR (schedule='' AND semester='')), -- Spring, Fall, Both, None; Only relevant if there is any schedule at all
     PRIMARY KEY (id)
 );
 
