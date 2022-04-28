@@ -2,6 +2,7 @@ package todo
 
 import (
 	"database/sql"
+	"time"
 
 	discord "github.com/bwmarrin/discordgo"
 	"github.com/lib/pq"
@@ -9,6 +10,15 @@ import (
 )
 
 var c *cron.Cron = cron.New()
+
+const (
+	// Calendar weeks of semester start / end
+	springSemesterStart = 8
+	springSemesterEnd   = 22
+
+	fallSemesterStart = 38
+	fallSemesterEnd   = 51
+)
 
 func (s Todo) subscribeHelp() string {
 	return "Usage: `todo subscribe [list|add|delete]`"
@@ -43,15 +53,31 @@ func (s Todo) InitialiseSubscriptions() error {
 	db, _ := sql.Open("postgres", s.PsqlConn)
 	defer db.Close()
 	// Initialise all subscription cronjobs
-	rows, _ := db.Query(`SELECT id, schedule FROM todo.subscription`)
+	rows, _ := db.Query(`SELECT id, schedule, semester FROM todo.subscription`)
 
 	for rows.Next() {
 		var id string
 		var schedule string
-		rows.Scan(&id, &schedule)
+		var semester string
+		rows.Scan(&id, &schedule, &semester)
 
 		if len(schedule) != 0 {
 			c.AddFunc(schedule, func() {
+				// Don't creat the subscription item if the task is for another semester
+				_, calendarWeek := time.Now().ISOWeek()
+				if semester == "F" &&
+					calendarWeek < springSemesterStart || calendarWeek > springSemesterEnd {
+					return
+				}
+				if semester == "H" &&
+					calendarWeek < fallSemesterStart || calendarWeek > fallSemesterEnd {
+					return
+				}
+				if semester == "B" &&
+					(calendarWeek < springSemesterStart || calendarWeek > springSemesterEnd) &&
+					(calendarWeek < fallSemesterStart || calendarWeek > fallSemesterEnd) {
+					return
+				}
 				s.createSubscriptionItem(id)
 			})
 		}
