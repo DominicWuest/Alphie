@@ -6,6 +6,7 @@ import (
 	"time"
 
 	discord "github.com/bwmarrin/discordgo"
+	_ "github.com/lib/pq"
 )
 
 func (s Todo) doneHelp() string {

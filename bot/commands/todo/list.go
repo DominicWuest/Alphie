@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	discord "github.com/bwmarrin/discordgo"
+	_ "github.com/lib/pq"
 )
 
 func (s Todo) List(bot *discord.Session, ctx *discord.MessageCreate, args []string) {

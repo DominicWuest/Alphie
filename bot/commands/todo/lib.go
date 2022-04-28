@@ -78,6 +78,26 @@ func (s Todo) checkUserPresence(id string) {
 	}
 }
 
+func (s Todo) CreateTask(author, title, description string) (int, error) {
+	db, _ := sql.Open("postgres", s.PsqlConn)
+	defer db.Close()
+	// Insert task into task table and get its ID
+	rows, err := db.Query(
+		`INSERT INTO todo.task (creator, title, description) VALUES ($1, $2, $3) RETURNING id`,
+		author,
+		title,
+		description,
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	var taskId int
+	rows.Scan(&taskId)
+
+	return taskId, nil
+}
+
 // Returns an array of the active todo items for a given user id
 func (s Todo) getActiveTodos(userId string) ([]todoItem, error) {
 	return s.getUserTODOs(userId, "active")

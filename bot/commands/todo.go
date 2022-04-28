@@ -11,6 +11,7 @@ import (
 	subcommands "github.com/DominicWuest/Alphie/commands/todo"
 
 	discord "github.com/bwmarrin/discordgo"
+	_ "github.com/lib/pq"
 )
 
 type Todo subcommands.Todo
