@@ -46,3 +46,9 @@ CREATE TABLE todo.subscription_child (
     CHECK (parent <> child),
     PRIMARY KEY (parent, child)
 );
+
+CREATE TABLE todo.subscribed_to (
+    discord_user VARCHAR(19) REFERENCES todo.discord_user (id) NOT NULL,
+    subscription VARCHAR(20) REFERENCES todo.subscription (id) NOT NULL,
+    PRIMARY KEY (discord_user, subscription)
+);

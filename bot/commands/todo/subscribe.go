@@ -2,10 +2,9 @@ package todo
 
 import (
 	"database/sql"
-	"fmt"
 
 	discord "github.com/bwmarrin/discordgo"
-	_ "github.com/lib/pq"
+	"github.com/lib/pq"
 	"github.com/robfig/cron"
 )
 
@@ -61,9 +60,15 @@ func (s Todo) createSubscriptionItem(id string) {
 	// Get all subscriptions which are ancestors of the subscription
 	ancestors := s.getAncestors(id)
 
-	fmt.Println(taskId, ancestors) // Temporary, to suppress unused-error
-
 	// Add the task to all users who are subscribed to one of the ancestors
+	db.Exec(`INSERT INTO todo.active (discord_user, task)
+		(
+			SELECT discord_user, $1 FROM todo.subscribed_to
+			WHERE subscription=ANY($2)
+		)`,
+		taskId,
+		pq.Array(ancestors),
+	)
 }
 
 func (s Todo) getAncestors(rootId string) []string {
