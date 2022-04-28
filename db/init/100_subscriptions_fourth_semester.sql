@@ -19,7 +19,7 @@ INSERT INTO todo.subscription (id, subscription_name, schedule) VALUES (
 INSERT INTO todo.subscription (id, subscription_name, schedule) VALUES (
     '252-0058-00L',
     'Formal Methods and Function Programming',
-    '@every 5s'
+    '@every 5s' -- temporary for testing
 );
 
 INSERT INTO todo.subscription (id, subscription_name, schedule) VALUES (
