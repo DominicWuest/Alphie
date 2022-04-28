@@ -52,6 +52,7 @@ func (s Todo) createSubscriptionItem(id string) {
 
 	var name string
 	rows, _ := db.Query(`SELECT subscription_name FROM todo.subscription WHERE id=$1`, id)
+	rows.Next()
 	rows.Scan(&name)
 
 	// Create the task with a userid of the bot

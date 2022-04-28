@@ -93,6 +93,7 @@ func (s Todo) CreateTask(author, title, description string) (int, error) {
 	}
 
 	var taskId int
+	rows.Next()
 	rows.Scan(&taskId)
 
 	return taskId, nil
