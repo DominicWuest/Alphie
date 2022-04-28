@@ -11,15 +11,31 @@ import (
 var c *cron.Cron = cron.New()
 
 func (s Todo) subscribeHelp() string {
-	return "Under construction"
+	return "Usage: `todo subscribe [list|add|delete]`"
 }
 
 func (s Todo) Subscribe(bot *discord.Session, ctx *discord.MessageCreate, args []string) {
 	s.checkUserPresence(ctx.Author.ID)
-	if len(args) == 1 && args[0] == "help" {
+	if len(args) == 0 || len(args) == 1 && args[0] == "help" {
 		bot.ChannelMessageSend(ctx.ChannelID, s.subscribeHelp())
+	} else {
+		switch args[0] {
+		case "list":
+			s.subscriptionList(bot, ctx, args[1:])
+		case "add":
+			fallthrough
+		case "subscribe":
+			s.subscriptionAdd(bot, ctx, args[1:])
+		case "delete":
+			fallthrough
+		case "remove":
+			fallthrough
+		case "unsubscribe":
+			s.subscriptionDelete(bot, ctx, args[1:])
+		default:
+			bot.ChannelMessageSend(ctx.ChannelID, "Couldn't interpret command\n"+s.subscribeHelp())
+		}
 	}
-	bot.ChannelMessageSend(ctx.ChannelID, "todo.subscribe")
 }
 
 // Parse all subscriptions and create their structs
@@ -93,4 +109,16 @@ func (s Todo) getAncestors(rootId string) []string {
 	}
 
 	return ids
+}
+
+func (s Todo) subscriptionList(bot *discord.Session, ctx *discord.MessageCreate, args []string) {
+	bot.ChannelMessageSend(ctx.ChannelID, "todo.subscribe.list")
+}
+
+func (s Todo) subscriptionAdd(bot *discord.Session, ctx *discord.MessageCreate, args []string) {
+	bot.ChannelMessageSend(ctx.ChannelID, "todo.subscribe.add")
+}
+
+func (s Todo) subscriptionDelete(bot *discord.Session, ctx *discord.MessageCreate, args []string) {
+	bot.ChannelMessageSend(ctx.ChannelID, "todo.subscribe.delete")
 }

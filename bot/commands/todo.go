@@ -37,6 +37,10 @@ func (s *Todo) HandleCommand(bot *discord.Session, ctx *discord.MessageCreate, a
 	case "delete":
 		sx.Delete(bot, ctx, args[2:])
 	case "subscribe": // Subscribes to a list or lists all possible ones
+		fallthrough
+	case "subscription":
+		fallthrough
+	case "subscriptions":
 		sx.Subscribe(bot, ctx, args[2:])
 	case "archive": // Archives an item
 		sx.Archive(bot, ctx, args[2:])
