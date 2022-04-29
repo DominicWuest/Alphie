@@ -2,7 +2,10 @@ package todo
 
 import (
 	"database/sql"
+	"fmt"
 	"time"
+
+	"github.com/DominicWuest/Alphie/constants"
 
 	discord "github.com/bwmarrin/discordgo"
 	"github.com/lib/pq"
@@ -19,6 +22,18 @@ const (
 	fallSemesterStart = 38
 	fallSemesterEnd   = 51
 )
+
+type subscriptionItem struct {
+	id   string
+	name string
+}
+
+type subscriptionItemNode struct {
+	value    subscriptionItem
+	children []*subscriptionItemNode
+}
+
+var subscriptionForest []*subscriptionItemNode
 
 func (s Todo) subscribeHelp() string {
 	return "Usage: `todo subscribe [list|add|delete]`"
@@ -50,6 +65,10 @@ func (s Todo) Subscribe(bot *discord.Session, ctx *discord.MessageCreate, args [
 
 // Parse all subscriptions and create their structs
 func (s Todo) InitialiseSubscriptions() error {
+
+	// Initialise the subscription tree for listing subscriptions and
+	subscriptionForest = s.getSubscriptionForest()
+
 	db, _ := sql.Open("postgres", s.PsqlConn)
 	defer db.Close()
 	// Initialise all subscription cronjobs
@@ -142,9 +161,106 @@ func (s Todo) subscriptionList(bot *discord.Session, ctx *discord.MessageCreate,
 }
 
 func (s Todo) subscriptionAdd(bot *discord.Session, ctx *discord.MessageCreate, args []string) {
-	bot.ChannelMessageSend(ctx.ChannelID, "todo.subscribe.add")
+	bot.ChannelMessageDelete(ctx.ChannelID, ctx.Message.ID)
+
+	items := s.getUserSubscriptionForest(ctx.Author.ID)
+	s.sendItemSelectMessage(
+		bot,
+		ctx,
+		items,
+		ctx.Author.Mention()+`, which schedules to you want to subscribe to?
+If you choose one schedule, you will automatically be subscribed to all its children.
+Items marked with `+constants.Emojis["success"]+" are already in your subscription list.",
+		"Schedules to subscribe to",
+		func(items []string, msg *discord.Message) {
+
+			fmt.Println(fmt.Sprint("Subscibed to ", items))
+
+			time.Sleep(messageDeleteDelay)
+			bot.ChannelMessageDelete(msg.ChannelID, msg.ID)
+		},
+		func(items []string, msg *discord.Message) {
+			content := "Cancelled"
+			bot.ChannelMessageEditComplex(&discord.MessageEdit{
+				Content:    &content,
+				Components: []discord.MessageComponent{},
+				ID:         msg.ID,
+				Channel:    ctx.ChannelID,
+			})
+
+			time.Sleep(messageDeleteDelay)
+			bot.ChannelMessageDelete(ctx.ChannelID, msg.ID)
+		},
+	)
 }
 
 func (s Todo) subscriptionDelete(bot *discord.Session, ctx *discord.MessageCreate, args []string) {
 	bot.ChannelMessageSend(ctx.ChannelID, "todo.subscribe.delete")
+}
+
+func (s Todo) getSubscriptionForest() []*subscriptionItemNode {
+	db, _ := sql.Open("postgres", s.PsqlConn)
+	defer db.Close()
+
+	// Get the roots
+	rows, _ := db.Query(`SELECT id, subscription_name FROM todo.subscription WHERE id NOT IN (SELECT child FROM todo.subscription_child)`)
+
+	var roots []*subscriptionItemNode
+	for rows.Next() {
+		var id, subscription_name string
+
+		rows.Scan(&id, &subscription_name)
+
+		roots = append(roots, &subscriptionItemNode{
+			value: subscriptionItem{
+				id:   id,
+				name: subscription_name,
+			},
+			// Get the children of the root
+			children: s.getChildren(id),
+		})
+	}
+
+	return roots
+}
+
+func (s Todo) getChildren(nodeId string) []*subscriptionItemNode {
+	db, _ := sql.Open("postgres", s.PsqlConn)
+	defer db.Close()
+
+	rows, _ := db.Query(
+		`SELECT id, subscription_name FROM todo.subscription 
+		JOIN 
+		todo.subscription_child ON id=child WHERE parent=$1`,
+		nodeId,
+	)
+
+	var children []*subscriptionItemNode
+	for rows.Next() {
+		var id, subscription_name string
+
+		rows.Scan(&id, &subscription_name)
+
+		children = append(children, &subscriptionItemNode{
+			value: subscriptionItem{
+				id:   id,
+				name: subscription_name,
+			},
+			// Get the children
+			children: s.getChildren(id),
+		})
+	}
+
+	return children
+}
+
+func (s Todo) getUserSubscriptionForest(userId string) []todoItem {
+	return []todoItem{
+		{
+			ID:          0,
+			Creator:     "0",
+			Title:       "Title",
+			Description: "Description",
+		},
+	}
 }
