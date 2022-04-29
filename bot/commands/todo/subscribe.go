@@ -3,6 +3,8 @@ package todo
 import (
 	"database/sql"
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/DominicWuest/Alphie/constants"
@@ -70,18 +72,39 @@ func (s Todo) subscriptionList(bot *discord.Session, ctx *discord.MessageCreate,
 func (s Todo) subscriptionAdd(bot *discord.Session, ctx *discord.MessageCreate, args []string) {
 	bot.ChannelMessageDelete(ctx.ChannelID, ctx.Message.ID)
 
-	items := s.getUserSubscriptionForest(ctx.Author.ID)
+	listedItems := s.getUserSubscriptionForest(ctx.Author.ID)
 	s.sendItemSelectMessage(
 		bot,
 		ctx,
-		items,
+		listedItems,
 		ctx.Author.Mention()+`, which schedules to you want to subscribe to?
 If you choose one schedule, you will automatically be subscribed to all its children.
 Items marked with `+constants.Emojis["success"]+" are already in your subscription list.",
 		"Schedules to subscribe to",
 		func(items []string, msg *discord.Message) {
 
-			fmt.Println(fmt.Sprint("Subscibed to ", items))
+			selectedSubscriptions := []string{}
+			for _, index := range items {
+				// TODO: Definitely have to refactor sendItemSelectMessage to accept non-int ids
+				index, _ := strconv.Atoi(index)
+				listedItem := listedItems[index]
+				split := strings.Split(listedItem.Description, " ")
+				selectedSubscriptions = append(selectedSubscriptions, split[len(split)-1])
+			}
+
+			newlySubscribed := s.addSubscriptions(ctx.Author.ID, selectedSubscriptions)
+
+			content := "Successfully subscribed to " + strings.Join(newlySubscribed, ", ") + "."
+			if len(newlySubscribed) == 0 {
+				content = "Didn't add any new subscriptions."
+			}
+
+			bot.ChannelMessageEditComplex(&discord.MessageEdit{
+				Content:    &content,
+				Components: []discord.MessageComponent{},
+				ID:         msg.ID,
+				Channel:    ctx.ChannelID,
+			})
 
 			time.Sleep(messageDeleteDelay)
 			bot.ChannelMessageDelete(msg.ChannelID, msg.ID)
@@ -148,6 +171,50 @@ func (s Todo) InitialiseSubscriptions() error {
 	return nil
 }
 
+// Adds the subscriptions to the user with id userId and returns newly added subscriptions
+func (s Todo) addSubscriptions(userId string, items []string) []string {
+	db, _ := sql.Open("postgres", s.PsqlConn)
+	defer db.Close()
+
+	added := []string{}
+	// Check if the user is subscribed to any ancestors
+	for _, subscription := range items {
+		ancestors := s.getAncestors(subscription)
+		rows, _ := db.Query(`SELECT * FROM todo.subscribed_to WHERE discord_user=$1	AND subscription=ANY($2)`,
+			userId,
+			pq.Array(ancestors),
+		)
+		// User isn't subscribed to any ancestors
+		if !rows.Next() {
+			// Get all subscription children
+			children := []string{}
+			layer := s.getChildren(subscription)
+			for len(layer) != 0 {
+				temp := []*subscriptionItemNode{}
+				for _, child := range layer {
+					temp = append(temp, s.getChildren(child.value.id)...)
+					children = append(children, child.value.id)
+				}
+				layer = temp
+			}
+			// Delete all subscription children
+			db.Exec(`DELETE FROM todo.subscribed_to WHERE discord_user=$1 AND subscription=ANY($2)`,
+				userId,
+				pq.Array(children),
+			)
+
+			// Add subscription
+			added = append(added, subscription)
+			db.Exec(`INSERT INTO todo.subscribed_to (discord_user, subscription) VALUES ($1, $2)`,
+				userId,
+				subscription,
+			)
+		}
+	}
+
+	return added
+}
+
 // Adds an active subscription item with an id of id to all users subscribed to it
 func (s Todo) createSubscriptionItem(id string) {
 	db, _ := sql.Open("postgres", s.PsqlConn)
@@ -175,7 +242,7 @@ func (s Todo) createSubscriptionItem(id string) {
 	)
 }
 
-// Gets all the ancestors of a subscription with id rootId
+// Gets all the ancestors and the node itself of a subscription with id rootId
 func (s Todo) getAncestors(rootId string) []string {
 	db, _ := sql.Open("postgres", s.PsqlConn)
 	defer db.Close()
