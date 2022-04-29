@@ -63,6 +63,48 @@ func (s Todo) Subscribe(bot *discord.Session, ctx *discord.MessageCreate, args [
 	}
 }
 
+func (s Todo) subscriptionList(bot *discord.Session, ctx *discord.MessageCreate, args []string) {
+	bot.ChannelMessageSend(ctx.ChannelID, "todo.subscribe.list")
+}
+
+func (s Todo) subscriptionAdd(bot *discord.Session, ctx *discord.MessageCreate, args []string) {
+	bot.ChannelMessageDelete(ctx.ChannelID, ctx.Message.ID)
+
+	items := s.getUserSubscriptionForest(ctx.Author.ID)
+	s.sendItemSelectMessage(
+		bot,
+		ctx,
+		items,
+		ctx.Author.Mention()+`, which schedules to you want to subscribe to?
+If you choose one schedule, you will automatically be subscribed to all its children.
+Items marked with `+constants.Emojis["success"]+" are already in your subscription list.",
+		"Schedules to subscribe to",
+		func(items []string, msg *discord.Message) {
+
+			fmt.Println(fmt.Sprint("Subscibed to ", items))
+
+			time.Sleep(messageDeleteDelay)
+			bot.ChannelMessageDelete(msg.ChannelID, msg.ID)
+		},
+		func(items []string, msg *discord.Message) {
+			content := "Cancelled"
+			bot.ChannelMessageEditComplex(&discord.MessageEdit{
+				Content:    &content,
+				Components: []discord.MessageComponent{},
+				ID:         msg.ID,
+				Channel:    ctx.ChannelID,
+			})
+
+			time.Sleep(messageDeleteDelay)
+			bot.ChannelMessageDelete(ctx.ChannelID, msg.ID)
+		},
+	)
+}
+
+func (s Todo) subscriptionDelete(bot *discord.Session, ctx *discord.MessageCreate, args []string) {
+	bot.ChannelMessageSend(ctx.ChannelID, "todo.subscribe.delete")
+}
+
 // Parse all subscriptions and create their structs
 func (s Todo) InitialiseSubscriptions() error {
 
@@ -106,6 +148,7 @@ func (s Todo) InitialiseSubscriptions() error {
 	return nil
 }
 
+// Adds an active subscription item with an id of id to all users subscribed to it
 func (s Todo) createSubscriptionItem(id string) {
 	db, _ := sql.Open("postgres", s.PsqlConn)
 	defer db.Close()
@@ -132,6 +175,7 @@ func (s Todo) createSubscriptionItem(id string) {
 	)
 }
 
+// Gets all the ancestors of a subscription with id rootId
 func (s Todo) getAncestors(rootId string) []string {
 	db, _ := sql.Open("postgres", s.PsqlConn)
 	defer db.Close()
@@ -156,54 +200,15 @@ func (s Todo) getAncestors(rootId string) []string {
 	return ids
 }
 
-func (s Todo) subscriptionList(bot *discord.Session, ctx *discord.MessageCreate, args []string) {
-	bot.ChannelMessageSend(ctx.ChannelID, "todo.subscribe.list")
-}
-
-func (s Todo) subscriptionAdd(bot *discord.Session, ctx *discord.MessageCreate, args []string) {
-	bot.ChannelMessageDelete(ctx.ChannelID, ctx.Message.ID)
-
-	items := s.getUserSubscriptionForest(ctx.Author.ID)
-	s.sendItemSelectMessage(
-		bot,
-		ctx,
-		items,
-		ctx.Author.Mention()+`, which schedules to you want to subscribe to?
-If you choose one schedule, you will automatically be subscribed to all its children.
-Items marked with `+constants.Emojis["success"]+" are already in your subscription list.",
-		"Schedules to subscribe to",
-		func(items []string, msg *discord.Message) {
-
-			fmt.Println(fmt.Sprint("Subscibed to ", items))
-
-			time.Sleep(messageDeleteDelay)
-			bot.ChannelMessageDelete(msg.ChannelID, msg.ID)
-		},
-		func(items []string, msg *discord.Message) {
-			content := "Cancelled"
-			bot.ChannelMessageEditComplex(&discord.MessageEdit{
-				Content:    &content,
-				Components: []discord.MessageComponent{},
-				ID:         msg.ID,
-				Channel:    ctx.ChannelID,
-			})
-
-			time.Sleep(messageDeleteDelay)
-			bot.ChannelMessageDelete(ctx.ChannelID, msg.ID)
-		},
-	)
-}
-
-func (s Todo) subscriptionDelete(bot *discord.Session, ctx *discord.MessageCreate, args []string) {
-	bot.ChannelMessageSend(ctx.ChannelID, "todo.subscribe.delete")
-}
-
+// Returns the roots of the forest of the forest made up by the subscriptions and initialises all the children of the nodes
 func (s Todo) getSubscriptionForest() []*subscriptionItemNode {
 	db, _ := sql.Open("postgres", s.PsqlConn)
 	defer db.Close()
 
 	// Get the roots
-	rows, _ := db.Query(`SELECT id, subscription_name FROM todo.subscription WHERE id NOT IN (SELECT child FROM todo.subscription_child)`)
+	rows, _ := db.Query(`SELECT id, subscription_name FROM todo.subscription 
+	WHERE id NOT IN (SELECT child FROM todo.subscription_child)
+	ORDER BY id DESC`)
 
 	var roots []*subscriptionItemNode
 	for rows.Next() {
@@ -224,6 +229,7 @@ func (s Todo) getSubscriptionForest() []*subscriptionItemNode {
 	return roots
 }
 
+// Returns all children of a subscription with id nodeId and initialises its children recursively
 func (s Todo) getChildren(nodeId string) []*subscriptionItemNode {
 	db, _ := sql.Open("postgres", s.PsqlConn)
 	defer db.Close()
@@ -254,13 +260,76 @@ func (s Todo) getChildren(nodeId string) []*subscriptionItemNode {
 	return children
 }
 
+// Returns the forest making up all subscriptions as todoItems, with items marked to which the user is subscribed to
 func (s Todo) getUserSubscriptionForest(userId string) []todoItem {
-	return []todoItem{
-		{
-			ID:          0,
-			Creator:     "0",
-			Title:       "Title",
-			Description: "Description",
-		},
+	db, _ := sql.Open("postgres", s.PsqlConn)
+	defer db.Close()
+
+	// Get all items the user is subscribed to
+	rows, _ := db.Query(
+		`SELECT id, subscription_name FROM todo.subscription 
+		JOIN todo.subscribed_to ON id=subscription
+		WHERE discord_user=$1`,
+		userId,
+	)
+
+	subscriptions := []subscriptionItem{}
+	for rows.Next() {
+		var id, name string
+		rows.Scan(&id, &name)
+		subscriptions = append(subscriptions, subscriptionItem{
+			id:   id,
+			name: name,
+		})
 	}
+
+	// Create the users forest
+	forest := []todoItem{}
+	// The index of the next item, used to identify the items in the list
+	lastIndex := 0
+	// Iterate over the roots
+	for index, root := range subscriptionForest {
+		// Get the tree from the root and insert it into the forest
+		newIndex, tree := s.getUserSubscriptionTree(subscriptions, root, fmt.Sprint(index+1, "."), lastIndex, false)
+		forest = append(forest, tree...)
+		lastIndex = newIndex
+	}
+
+	return forest
+}
+
+// Returns the tree rooted at the root as todoItems, with items marked to which the user is subscribed to
+// The function also returns the highest index of the todoItems in the list
+func (s Todo) getUserSubscriptionTree(subscriptions []subscriptionItem, root *subscriptionItemNode, prefix string, beginningIndex int, inSubscription bool) (int, []todoItem) {
+	// Check if new root is in subscriptions
+	if !inSubscription {
+		for _, sub := range subscriptions {
+			if root.value.id == sub.id {
+				inSubscription = true
+				break
+			}
+		}
+	}
+
+	// The todoItem of the root
+	rootItem := todoItem{
+		ID:          beginningIndex,
+		Title:       prefix + " " + root.value.name,
+		Description: " " + root.value.id,
+	}
+	// Mark item if the user is subscribed
+	if inSubscription {
+		rootItem.Description = constants.Emojis["success"] + rootItem.Description
+	}
+
+	// Get the subtrees of the children and insert them into the tree
+	tree := []todoItem{rootItem}
+	lastIndex := beginningIndex + 1
+	for index, root := range root.children {
+		newIndex, subtree := s.getUserSubscriptionTree(subscriptions, root, fmt.Sprint(prefix, index+1, "."), lastIndex, inSubscription)
+		tree = append(tree, subtree...)
+		lastIndex = newIndex
+	}
+
+	return lastIndex, tree
 }
