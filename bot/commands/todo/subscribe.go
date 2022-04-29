@@ -31,8 +31,10 @@ type subscriptionItem struct {
 }
 
 type subscriptionItemNode struct {
-	value    subscriptionItem
-	children []*subscriptionItemNode
+	value       subscriptionItem
+	subscribed  bool  // If the user is subscribed to the item, only used in user-specific methods
+	nodeIndexes []int // The index of the ancestor nodes in their respective layer, starting at 1 to be more easily readable
+	children    []*subscriptionItemNode
 }
 
 var subscriptionForest []*subscriptionItemNode
@@ -72,7 +74,20 @@ func (s Todo) subscriptionList(bot *discord.Session, ctx *discord.MessageCreate,
 func (s Todo) subscriptionAdd(bot *discord.Session, ctx *discord.MessageCreate, args []string) {
 	bot.ChannelMessageDelete(ctx.ChannelID, ctx.Message.ID)
 
-	listedItems := s.getUserSubscriptionForest(ctx.Author.ID)
+	// Fold the users subscription forest to make it more presentable
+	listedItems := s.foldSubscriptionForest(s.getUserSubscriptionForest(ctx.Author.ID), func(acc []todoItem, curr subscriptionItemNode) []todoItem {
+		rootItem := todoItem{
+			ID:          len(acc),
+			Title:       curr.value.name,
+			Description: curr.value.id,
+		}
+		// Mark item if the user is subscribed
+		if curr.subscribed {
+			rootItem.Description = constants.Emojis["success"] + " " + rootItem.Description
+		}
+
+		return append(acc, rootItem)
+	})
 	s.sendItemSelectMessage(
 		bot,
 		ctx,
@@ -125,7 +140,73 @@ Items marked with `+constants.Emojis["success"]+" are already in your subscripti
 }
 
 func (s Todo) subscriptionDelete(bot *discord.Session, ctx *discord.MessageCreate, args []string) {
-	bot.ChannelMessageSend(ctx.ChannelID, "todo.subscribe.delete")
+	bot.ChannelMessageDelete(ctx.ChannelID, ctx.Message.ID)
+
+	// Fold the users subscription forest to make it more presentable
+	listedItems := s.foldSubscriptionForest(s.getUserSubscriptionForest(ctx.Author.ID), func(acc []todoItem, curr subscriptionItemNode) []todoItem {
+		stringIndexes := []string{}
+		for _, index := range curr.nodeIndexes {
+			stringIndexes = append(stringIndexes, fmt.Sprint(index))
+		}
+		rootItem := todoItem{
+			ID:          len(acc),
+			Title:       strings.Join(stringIndexes, ".") + ". " + curr.value.name,
+			Description: curr.value.id,
+		}
+		// Mark item if the user is subscribed
+		if curr.subscribed {
+			return append(acc, rootItem)
+		}
+		return acc
+	})
+	s.sendItemSelectMessage(
+		bot,
+		ctx,
+		listedItems,
+		ctx.Author.Mention()+`, which schedules to you want to unsubscribe from?
+If you unsubscribe from an item, you will automatically be unsubscribed from all its children too`,
+		"Schedules to unsubscribe from",
+		func(items []string, msg *discord.Message) {
+
+			selectedSubscriptions := []string{}
+			for _, index := range items {
+				// TODO: Definitely have to refactor sendItemSelectMessage to accept non-int ids
+				index, _ := strconv.Atoi(index)
+				listedItem := listedItems[index]
+				split := strings.Split(listedItem.Description, " ")
+				selectedSubscriptions = append(selectedSubscriptions, split[len(split)-1])
+			}
+
+			unsubscribed := s.deleteSubscriptions(ctx.Author.ID, selectedSubscriptions)
+
+			content := "Successfully unsubscribed from " + strings.Join(unsubscribed, ", ") + "."
+			if len(unsubscribed) == 0 {
+				content = "Didn't delete any subscriptions."
+			}
+
+			bot.ChannelMessageEditComplex(&discord.MessageEdit{
+				Content:    &content,
+				Components: []discord.MessageComponent{},
+				ID:         msg.ID,
+				Channel:    ctx.ChannelID,
+			})
+
+			time.Sleep(messageDeleteDelay)
+			bot.ChannelMessageDelete(msg.ChannelID, msg.ID)
+		},
+		func(items []string, msg *discord.Message) {
+			content := "Cancelled"
+			bot.ChannelMessageEditComplex(&discord.MessageEdit{
+				Content:    &content,
+				Components: []discord.MessageComponent{},
+				ID:         msg.ID,
+				Channel:    ctx.ChannelID,
+			})
+
+			time.Sleep(messageDeleteDelay)
+			bot.ChannelMessageDelete(ctx.ChannelID, msg.ID)
+		},
+	)
 }
 
 // Parse all subscriptions and create their structs
@@ -215,6 +296,18 @@ func (s Todo) addSubscriptions(userId string, items []string) []string {
 	return added
 }
 
+// Unsubscribes the user with id userId from items and returns deleted subscriptions
+func (s Todo) deleteSubscriptions(userId string, items []string) []string {
+	db, _ := sql.Open("postgres", s.PsqlConn)
+	defer db.Close()
+
+	deleted := []string{}
+
+	fmt.Println(fmt.Sprint("Deleting ", items))
+
+	return deleted
+}
+
 // Adds an active subscription item with an id of id to all users subscribed to it
 func (s Todo) createSubscriptionItem(id string) {
 	db, _ := sql.Open("postgres", s.PsqlConn)
@@ -278,19 +371,27 @@ func (s Todo) getSubscriptionForest() []*subscriptionItemNode {
 	ORDER BY id DESC`)
 
 	var roots []*subscriptionItemNode
+	index := 1
 	for rows.Next() {
 		var id, subscription_name string
 
 		rows.Scan(&id, &subscription_name)
 
-		roots = append(roots, &subscriptionItemNode{
+		indexes := []int{index}
+		index++
+
+		root := &subscriptionItemNode{
 			value: subscriptionItem{
 				id:   id,
 				name: subscription_name,
 			},
+			nodeIndexes: indexes,
 			// Get the children of the root
 			children: s.getChildren(id),
-		})
+		}
+
+		roots = append(roots, root)
+		s.initChildrenIndexes(root, indexes)
 	}
 
 	return roots
@@ -327,8 +428,17 @@ func (s Todo) getChildren(nodeId string) []*subscriptionItemNode {
 	return children
 }
 
+// Recursively initialises all the nodeIndexes fields of the node (Index starting at 1)
+func (s Todo) initChildrenIndexes(node *subscriptionItemNode, indexes []int) {
+	for index, child := range node.children {
+		nextIndexes := append(indexes, index+1)
+		child.nodeIndexes = nextIndexes
+		s.initChildrenIndexes(child, nextIndexes)
+	}
+}
+
 // Returns the forest making up all subscriptions as todoItems, with items marked to which the user is subscribed to
-func (s Todo) getUserSubscriptionForest(userId string) []todoItem {
+func (s Todo) getUserSubscriptionForest(userId string) []*subscriptionItemNode {
 	db, _ := sql.Open("postgres", s.PsqlConn)
 	defer db.Close()
 
@@ -351,15 +461,12 @@ func (s Todo) getUserSubscriptionForest(userId string) []todoItem {
 	}
 
 	// Create the users forest
-	forest := []todoItem{}
-	// The index of the next item, used to identify the items in the list
-	lastIndex := 0
+	forest := []*subscriptionItemNode{}
 	// Iterate over the roots
-	for index, root := range subscriptionForest {
+	for _, root := range subscriptionForest {
 		// Get the tree from the root and insert it into the forest
-		newIndex, tree := s.getUserSubscriptionTree(subscriptions, root, fmt.Sprint(index+1, "."), lastIndex, false)
-		forest = append(forest, tree...)
-		lastIndex = newIndex
+		tree := s.getUserSubscriptionTree(subscriptions, root, false)
+		forest = append(forest, tree)
 	}
 
 	return forest
@@ -367,8 +474,7 @@ func (s Todo) getUserSubscriptionForest(userId string) []todoItem {
 
 // Returns the tree rooted at the root as todoItems, with items marked to which the user is subscribed to
 // The function also returns the highest index of the todoItems in the list
-func (s Todo) getUserSubscriptionTree(subscriptions []subscriptionItem, root *subscriptionItemNode, prefix string, beginningIndex int, inSubscription bool) (int, []todoItem) {
-	// Check if new root is in subscriptions
+func (s Todo) getUserSubscriptionTree(subscriptions []subscriptionItem, root *subscriptionItemNode, inSubscription bool) *subscriptionItemNode {
 	if !inSubscription {
 		for _, sub := range subscriptions {
 			if root.value.id == sub.id {
@@ -378,25 +484,39 @@ func (s Todo) getUserSubscriptionTree(subscriptions []subscriptionItem, root *su
 		}
 	}
 
-	// The todoItem of the root
-	rootItem := todoItem{
-		ID:          beginningIndex,
-		Title:       prefix + " " + root.value.name,
-		Description: " " + root.value.id,
-	}
-	// Mark item if the user is subscribed
-	if inSubscription {
-		rootItem.Description = constants.Emojis["success"] + rootItem.Description
+	rootItem := &subscriptionItemNode{
+		value:       root.value,
+		subscribed:  inSubscription,
+		nodeIndexes: root.nodeIndexes,
+		children:    []*subscriptionItemNode{},
 	}
 
-	// Get the subtrees of the children and insert them into the tree
-	tree := []todoItem{rootItem}
-	lastIndex := beginningIndex + 1
-	for index, root := range root.children {
-		newIndex, subtree := s.getUserSubscriptionTree(subscriptions, root, fmt.Sprint(prefix, index+1, "."), lastIndex, inSubscription)
-		tree = append(tree, subtree...)
-		lastIndex = newIndex
+	for _, child := range root.children {
+		rootItem.children = append(rootItem.children, s.getUserSubscriptionTree(subscriptions, child, inSubscription))
 	}
 
-	return lastIndex, tree
+	return rootItem
+}
+
+// Folds a subscription forest to make it usable in selectMessageCreate
+func (s Todo) foldSubscriptionForest(roots []*subscriptionItemNode, fun func([]todoItem, subscriptionItemNode) []todoItem) []todoItem {
+	folded := []todoItem{}
+	for _, root := range roots {
+		folded = fun(folded, *root)
+		for _, child := range root.children {
+			folded = s.foldSubscriptionTree(child, folded, fun)
+		}
+	}
+
+	return folded
+}
+
+// Folds a subscription tree
+func (s Todo) foldSubscriptionTree(root *subscriptionItemNode, acc []todoItem, fun func([]todoItem, subscriptionItemNode) []todoItem) []todoItem {
+	acc = fun(acc, *root)
+	for _, child := range root.children {
+		acc = s.foldSubscriptionTree(child, acc, fun)
+	}
+
+	return acc
 }
