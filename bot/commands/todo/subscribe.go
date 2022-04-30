@@ -187,6 +187,11 @@ func (s Todo) subscriptionDelete(bot *discord.Session, ctx *discord.MessageCreat
 		}
 		return acc
 	})
+
+	if len(listedItems) == 0 {
+		bot.ChannelMessageSend(ctx.ChannelID, ctx.Author.Mention()+" doesn't have any active subscriptions.")
+	}
+
 	s.sendItemSelectMessage(
 		bot,
 		ctx,
