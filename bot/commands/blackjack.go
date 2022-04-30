@@ -280,7 +280,12 @@ func (s *Blackjack) handleHit(interaction *discord.Interaction) {
 		Type: discord.InteractionResponseDeferredMessageUpdate,
 	})
 
-	if s.state != waiting || s.player.ID != interaction.Member.User.ID {
+	user := interaction.User
+	if user == nil {
+		user = interaction.Member.User
+	}
+
+	if s.state != waiting || s.player.ID != user.ID {
 		return
 	}
 
@@ -319,7 +324,12 @@ func (s *Blackjack) handleStand(interaction *discord.Interaction) {
 		Type: discord.InteractionResponseDeferredMessageUpdate,
 	})
 
-	if s.state != waiting || s.player.ID != interaction.Member.User.ID {
+	user := interaction.User
+	if user == nil {
+		user = interaction.Member.User
+	}
+
+	if s.state != waiting || s.player.ID != user.ID {
 		return
 	}
 
@@ -348,7 +358,12 @@ func (s *Blackjack) handleExit(interaction *discord.Interaction) {
 		Type: discord.InteractionResponseDeferredMessageUpdate,
 	})
 
-	if s.player.ID != interaction.Member.User.ID {
+	user := interaction.User
+	if user == nil {
+		user = interaction.Member.User
+	}
+
+	if s.player.ID != user.ID {
 		return
 	}
 
@@ -369,7 +384,12 @@ func (s *Blackjack) handleRestart(interaction *discord.Interaction) {
 		Type: discord.InteractionResponseDeferredMessageUpdate,
 	})
 
-	if s.player.ID != interaction.Member.User.ID {
+	user := interaction.User
+	if user == nil {
+		user = interaction.Member.User
+	}
+
+	if s.player.ID != user.ID {
 		return
 	}
 

@@ -52,15 +52,9 @@ func (s Todo) Subscribe(bot *discord.Session, ctx *discord.MessageCreate, args [
 		switch args[0] {
 		case "list":
 			s.subscriptionList(bot, ctx, args[1:])
-		case "add":
-			fallthrough
-		case "subscribe":
+		case "add", "subscribe":
 			s.subscriptionAdd(bot, ctx, args[1:])
-		case "delete":
-			fallthrough
-		case "remove":
-			fallthrough
-		case "unsubscribe":
+		case "delete", "remove", "unsubscribe":
 			s.subscriptionDelete(bot, ctx, args[1:])
 		default:
 			bot.ChannelMessageSend(ctx.ChannelID, "Couldn't interpret command\n"+s.subscribeHelp())
@@ -70,7 +64,7 @@ func (s Todo) Subscribe(bot *discord.Session, ctx *discord.MessageCreate, args [
 
 func (s Todo) subscriptionList(bot *discord.Session, ctx *discord.MessageCreate, args []string) {
 	bot.ChannelMessageDelete(ctx.ChannelID, ctx.Message.ID)
-	content := ctx.Author.Mention() + "'s subscriptions. Items in green are in your subscription list.\nAll schedules are discplayed in cronjob format.\n```bash\n"
+	content := ctx.Author.Mention() + "'s subscriptions. Items in green are in your subscription list.\nAll schedules are displayed in the cronjob format.\n```bash\n"
 
 	// Fold the users subscription forest to make it more presentable
 	formattedItems := s.foldSubscriptionForest(s.getUserSubscriptionForest(ctx.Author.ID), func(acc []todoItem, curr subscriptionItemNode) []todoItem {

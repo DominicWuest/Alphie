@@ -25,15 +25,9 @@ func (s Todo) List(bot *discord.Session, ctx *discord.MessageCreate, args []stri
 			todos, err = s.getAllTodos(ctx.Author.ID)
 		case "active":
 			todos, err = s.getActiveTodos(ctx.Author.ID)
-		case "archive":
-			fallthrough
-		case "archived":
+		case "archive", "archived":
 			todos, err = s.getArchivedTodos(ctx.Author.ID)
-		case "done":
-			fallthrough
-		case "checked":
-			fallthrough
-		case "check":
+		case "done", "checked", "check":
 			todos, err = s.getDoneTodos(ctx.Author.ID)
 		case "help":
 			bot.ChannelMessageSend(ctx.ChannelID, s.listHelp())
