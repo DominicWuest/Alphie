@@ -26,8 +26,9 @@ const (
 )
 
 type subscriptionItem struct {
-	id   string
-	name string
+	id       string
+	name     string
+	schedule string
 }
 
 type subscriptionItemNode struct {
@@ -69,7 +70,7 @@ func (s Todo) Subscribe(bot *discord.Session, ctx *discord.MessageCreate, args [
 
 func (s Todo) subscriptionList(bot *discord.Session, ctx *discord.MessageCreate, args []string) {
 	bot.ChannelMessageDelete(ctx.ChannelID, ctx.Message.ID)
-	content := ctx.Author.Mention() + "'s subscriptions. Items in green are already in your subscription list.\n```bash\n"
+	content := ctx.Author.Mention() + "'s subscriptions. Items in green are in your subscription list.\nAll schedules are discplayed in cronjob format.\n```bash\n"
 
 	// Fold the users subscription forest to make it more presentable
 	formattedItems := s.foldSubscriptionForest(s.getUserSubscriptionForest(ctx.Author.ID), func(acc []todoItem, curr subscriptionItemNode) []todoItem {
@@ -83,6 +84,10 @@ func (s Todo) subscriptionList(bot *discord.Session, ctx *discord.MessageCreate,
 			rootItem.Title = " " + rootItem.Title
 		}
 		rootItem.Title = strings.Repeat("\t", len(curr.nodeIndexes)-1) + rootItem.Title
+
+		if curr.value.schedule != "" {
+			rootItem.Title += " -- " + curr.value.schedule
+		}
 
 		return append(acc, rootItem)
 	})
@@ -465,24 +470,25 @@ func (s Todo) getSubscriptionForest() []*subscriptionItemNode {
 	defer db.Close()
 
 	// Get the roots
-	rows, _ := db.Query(`SELECT id, subscription_name FROM todo.subscription 
+	rows, _ := db.Query(`SELECT id, subscription_name, schedule FROM todo.subscription 
 	WHERE id NOT IN (SELECT child FROM todo.subscription_child)
-	ORDER BY id DESC`)
+	ORDER BY id ASC`)
 
 	var roots []*subscriptionItemNode
 	index := 1
 	for rows.Next() {
-		var id, subscription_name string
+		var id, subscription_name, schedule string
 
-		rows.Scan(&id, &subscription_name)
+		rows.Scan(&id, &subscription_name, &schedule)
 
 		indexes := []int{index}
 		index++
 
 		root := &subscriptionItemNode{
 			value: subscriptionItem{
-				id:   id,
-				name: subscription_name,
+				id:       id,
+				name:     subscription_name,
+				schedule: schedule,
 			},
 			nodeIndexes: indexes,
 			// Get the children of the root
@@ -502,7 +508,7 @@ func (s Todo) getChildren(nodeId string) []*subscriptionItemNode {
 	defer db.Close()
 
 	rows, _ := db.Query(
-		`SELECT id, subscription_name FROM todo.subscription 
+		`SELECT id, subscription_name, schedule FROM todo.subscription 
 		JOIN 
 		todo.subscription_child ON id=child WHERE parent=$1`,
 		nodeId,
@@ -510,14 +516,15 @@ func (s Todo) getChildren(nodeId string) []*subscriptionItemNode {
 
 	var children []*subscriptionItemNode
 	for rows.Next() {
-		var id, subscription_name string
+		var id, subscription_name, schedule string
 
-		rows.Scan(&id, &subscription_name)
+		rows.Scan(&id, &subscription_name, &schedule)
 
 		children = append(children, &subscriptionItemNode{
 			value: subscriptionItem{
-				id:   id,
-				name: subscription_name,
+				id:       id,
+				name:     subscription_name,
+				schedule: schedule,
 			},
 			// Get the children
 			children: s.getChildren(id),

@@ -8,28 +8,43 @@ INSERT INTO todo.subscription (id, subscription_name, schedule, semester) VALUES
 INSERT INTO todo.subscription (id, subscription_name, schedule, semester) VALUES (
     '252-0064-00L',
     'Computer Networks',
-    '@every 1m', -- temporary for testing
+    '0 0 * * FRI',
     'F'
 );
 
 INSERT INTO todo.subscription (id, subscription_name, schedule, semester) VALUES (
     '252-0063-00L',
     'Data Modelling and Databases',
-    '@every 1m', -- temporary for testing
+    '0 16 * * THU',
     'F'
 );
 
 INSERT INTO todo.subscription (id, subscription_name, schedule, semester) VALUES (
     '252-0058-00L',
     'Formal Methods and Function Programming',
-    '@every 1m', -- temporary for testing
+    '0 0 * * MON',
     'F'
 );
 
 INSERT INTO todo.subscription (id, subscription_name, schedule, semester) VALUES (
     '401-0614-00L',
     'Probability and Statistics',
-    '@every 1m', -- temporary for testing
+    '',
+    ''
+);
+
+INSERT INTO todo.subscription (id, subscription_name, schedule, semester) VALUES (
+    '401-0614-00L-0',
+    'Exercise Sheet',
+    '0 10 * * WED',
+    'F'
+);
+
+
+INSERT INTO todo.subscription (id, subscription_name, schedule, semester) VALUES (
+    '401-0614-00L-1',
+    'Quiz',
+    '0 10 * * WED',
     'F'
 );
 
@@ -51,4 +66,14 @@ INSERT INTO todo.subscription_child (parent, child) VALUES (
 INSERT INTO todo.subscription_child (parent, child) VALUES (
     'Sem-04',
     '401-0614-00L'
+);
+
+INSERT INTO todo.subscription_child (parent, child) VALUES (
+    '401-0614-00L',
+    '401-0614-00L-0'
+);
+
+INSERT INTO todo.subscription_child (parent, child) VALUES (
+    '401-0614-00L',
+    '401-0614-00L-1'
 );
