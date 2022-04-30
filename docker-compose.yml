@@ -3,6 +3,19 @@ services:
     container_name: alphie-bot
     build: ./bot
     env_file:
-      - bot.env  
+      - bot.env
+      - .env
     volumes:
       - ./bot:/usr/src/app
+
+  db:
+    container_name: alphie-db
+    hostname: ${DB_HOSTNAME} # Defined in .env
+    image: postgres:14-alpine
+    env_file:
+      - .env
+    volumes:
+      - ./db/data:/var/lib/postgresql/data # Persistent data storage
+      - ./db/init:/docker-entrypoint-initdb.d # DB initialisation scripts
+    ports:
+      - ${DB_PORT}:5432
