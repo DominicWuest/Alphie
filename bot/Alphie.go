@@ -28,6 +28,7 @@ func main() {
 	// Initialising all commands
 	COMMANDS["ping"] = commands.Ping{}.Init()
 	COMMANDS["blackjack"] = commands.Blackjack{}.Init()
+	COMMANDS["todo"] = commands.Todo{}.Init()
 
 	COMMANDS["help"] = commands.Help{}.Init(&COMMANDS)
 
@@ -109,14 +110,22 @@ func messageCreate(bot *discord.Session, ctx *discord.MessageCreate) {
 }
 
 func interactionCreate(bot *discord.Session, interaction *discord.InteractionCreate) {
+	var handler (func(*discord.Interaction))
+	var found bool
 	switch interaction.Data.Type() {
 	case discord.InteractionMessageComponent:
 		id := interaction.MessageComponentData().CustomID
-		fun, found := constants.Handlers.MessageComponents[id]
-		if found {
-			go fun(interaction.Interaction)
-		} else {
-			fmt.Println("Interaction created but ID not found")
-		}
+		handler, found = constants.Handlers.MessageComponents[id]
+	case discord.InteractionModalSubmit:
+		id := interaction.ModalSubmitData().CustomID
+		handler, found = constants.Handlers.ModalSubmit[id]
+	default:
+		fmt.Println("Couldn't associate Interaction to any known type", interaction.Data.Type().String())
+	}
+
+	if found {
+		go handler(interaction.Interaction)
+	} else {
+		fmt.Println("Interaction created but ID not found")
 	}
 }
