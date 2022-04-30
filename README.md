@@ -1,5 +1,10 @@
 # Alphie
-My little baby :3
+The best engineer in all of Koppai!
+
+# If you want to contribute to Alphie
+Feel free to open a pull request once you have implemented your changes.
+
+You can also open an issue here on GitHub or DM me on Discord if you have feature requests or find a bug.
 
 # If you want to run Alphie yourself
 Before running Alphie, a few environment variables have to be set in `bot.env`:
