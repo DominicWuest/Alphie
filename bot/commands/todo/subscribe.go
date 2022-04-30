@@ -68,7 +68,31 @@ func (s Todo) Subscribe(bot *discord.Session, ctx *discord.MessageCreate, args [
 }
 
 func (s Todo) subscriptionList(bot *discord.Session, ctx *discord.MessageCreate, args []string) {
-	bot.ChannelMessageSend(ctx.ChannelID, "todo.subscribe.list")
+	bot.ChannelMessageDelete(ctx.ChannelID, ctx.Message.ID)
+	content := ctx.Author.Mention() + "'s subscriptions. Items in green are already in your subscription list.\n```bash\n"
+
+	// Fold the users subscription forest to make it more presentable
+	formattedItems := s.foldSubscriptionForest(s.getUserSubscriptionForest(ctx.Author.ID), func(acc []todoItem, curr subscriptionItemNode) []todoItem {
+		rootItem := todoItem{
+			Title: curr.value.name,
+		}
+		// Mark item if the user is subscribed
+		if curr.subscribed {
+			rootItem.Title = `"` + rootItem.Title + `"`
+		} else {
+			rootItem.Title = " " + rootItem.Title
+		}
+		rootItem.Title = strings.Repeat("\t", len(curr.nodeIndexes)-1) + rootItem.Title
+
+		return append(acc, rootItem)
+	})
+
+	for _, item := range formattedItems {
+		content += item.Title + "\n"
+	}
+
+	content += "\n```"
+	bot.ChannelMessageSend(ctx.ChannelID, content)
 }
 
 func (s Todo) subscriptionAdd(bot *discord.Session, ctx *discord.MessageCreate, args []string) {
@@ -334,8 +358,6 @@ func (s Todo) deleteSubscriptions(userId string, items []string) []string {
 			s.deleteSubscription(userId, subscription)
 		}
 	}
-
-	fmt.Println(fmt.Sprint("Deleting ", deleted))
 
 	return deleted
 }
