@@ -57,7 +57,7 @@ func (s Todo) Subscribe(bot *discord.Session, ctx *discord.MessageCreate, args [
 		case "delete", "remove", "unsubscribe":
 			s.subscriptionDelete(bot, ctx, args[1:])
 		default:
-			bot.ChannelMessageSend(ctx.ChannelID, "Couldn't interpret command\n"+s.subscribeHelp())
+			bot.ChannelMessageSend(ctx.ChannelID, "Couldn't interpret command.\n"+s.subscribeHelp())
 		}
 	}
 }

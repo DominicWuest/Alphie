@@ -19,7 +19,7 @@ func (s Todo) Delete(bot *discord.Session, ctx *discord.MessageCreate, args []st
 	if len(args) == 0 { // Send message to delete items in bulk
 		items, err := s.getAllTodos(ctx.Author.ID)
 		if err != nil {
-			msg, _ := bot.ChannelMessageSend(ctx.ChannelID, fmt.Sprint("Couldn't create message: ", err))
+			msg, _ := bot.ChannelMessageSend(ctx.ChannelID, fmt.Sprint("Couldn't create message: ", err, "."))
 
 			time.Sleep(messageDeleteDelay)
 
@@ -27,7 +27,7 @@ func (s Todo) Delete(bot *discord.Session, ctx *discord.MessageCreate, args []st
 			bot.ChannelMessageDelete(ctx.ChannelID, ctx.Message.ID)
 			return
 		} else if len(items) == 0 {
-			msg, _ := bot.ChannelMessageSendReply(ctx.ChannelID, "You have no TODO items", ctx.Reference())
+			msg, _ := bot.ChannelMessageSendReply(ctx.ChannelID, "You have no TODO items.", ctx.Reference())
 
 			time.Sleep(messageDeleteDelay)
 
@@ -43,9 +43,9 @@ func (s Todo) Delete(bot *discord.Session, ctx *discord.MessageCreate, args []st
 			ctx.Author.Mention()+", please mark which items you want to delete.",
 			"Items to delete",
 			func(items []string, msg *discord.Message) {
-				content := "Successfully deleted " + strings.Join(items, ", ")
+				content := "Successfully deleted " + strings.Join(items, ", ") + "."
 				if len(items) == 0 {
-					content = "Didn't delete any items"
+					content = "Didn't delete any items."
 				}
 
 				bot.ChannelMessageEditComplex(&discord.MessageEdit{
@@ -79,7 +79,7 @@ func (s Todo) Delete(bot *discord.Session, ctx *discord.MessageCreate, args []st
 	} else { // Parse rest as IDs and delete them
 		ids, err := parseIds(args)
 		if err != nil {
-			msg, _ := bot.ChannelMessageSend(ctx.ChannelID, "Error parsing IDs\n"+s.doneHelp())
+			msg, _ := bot.ChannelMessageSend(ctx.ChannelID, "Error parsing IDs.\n"+s.doneHelp())
 			time.Sleep(messageDeleteDelay)
 			bot.ChannelMessageDelete(ctx.ChannelID, ctx.Message.ID)
 			bot.ChannelMessageDelete(ctx.ChannelID, msg.ID)

@@ -50,7 +50,7 @@ func (s Todo) Add(bot *discord.Session, ctx *discord.MessageCreate, args []strin
 		bot.ChannelMessageSend(ctx.ChannelID, s.addHelp())
 	} else { // Add new item with title
 		s.addItem(ctx.Author.ID, strings.Join(args, " "), "")
-		msg, _ := bot.ChannelMessageSend(ctx.ChannelID, "Successfully added item with title "+strings.Join(args, " "))
+		msg, _ := bot.ChannelMessageSend(ctx.ChannelID, "Successfully added item(s) with title "+strings.Join(args, " ")+".")
 		time.Sleep(messageDeleteDelay)
 		bot.ChannelMessageDelete(msg.ChannelID, msg.ID)
 	}
@@ -62,7 +62,6 @@ func (s Todo) addItemModalCreate(bot *discord.Session, interaction *discord.Inte
 	bot.InteractionRespond(interaction, &discord.InteractionResponse{
 		Type: discord.InteractionResponseModal,
 		Data: &discord.InteractionResponseData{
-			Content:  "Test",
 			CustomID: interactionId,
 			Title:    "Add TODO item",
 			Components: []discord.MessageComponent{

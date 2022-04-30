@@ -20,14 +20,14 @@ func (s *Todo) Done(bot *discord.Session, ctx *discord.MessageCreate, args []str
 		bot.ChannelMessageDelete(ctx.ChannelID, ctx.Message.ID)
 		items, err := s.getActiveTodos(ctx.Author.ID)
 		if err != nil {
-			msg, _ := bot.ChannelMessageSend(ctx.ChannelID, fmt.Sprint("Couldn't create message: ", err))
+			msg, _ := bot.ChannelMessageSend(ctx.ChannelID, fmt.Sprint("Couldn't create message: ", err, "."))
 
 			time.Sleep(messageDeleteDelay)
 
 			bot.ChannelMessageDelete(ctx.ChannelID, msg.ID)
 			return
 		} else if len(items) == 0 {
-			msg, _ := bot.ChannelMessageSendReply(ctx.ChannelID, "You have no active TODO items", ctx.Reference())
+			msg, _ := bot.ChannelMessageSendReply(ctx.ChannelID, "You have no active TODO items.", ctx.Reference())
 
 			time.Sleep(messageDeleteDelay)
 
@@ -41,9 +41,9 @@ func (s *Todo) Done(bot *discord.Session, ctx *discord.MessageCreate, args []str
 			ctx.Author.Mention()+", please mark which items you completed.",
 			"Completed Items",
 			func(items []string, msg *discord.Message) {
-				content := "Successfully marked off " + strings.Join(items, ", ") + " as done"
+				content := "Successfully marked off " + strings.Join(items, ", ") + " as done."
 				if len(items) == 0 {
-					content = "Didn't mark any items as done"
+					content = "Didn't mark any items as done."
 				}
 
 				bot.ChannelMessageEditComplex(&discord.MessageEdit{
@@ -79,20 +79,20 @@ func (s *Todo) Done(bot *discord.Session, ctx *discord.MessageCreate, args []str
 	} else { // Parse rest as ids and check them off
 		ids, err := parseIds(args)
 		if err != nil {
-			msg, _ := bot.ChannelMessageSend(ctx.ChannelID, "Error parsing IDs\n"+s.doneHelp())
+			msg, _ := bot.ChannelMessageSend(ctx.ChannelID, "Error parsing IDs.\n"+s.doneHelp())
 			time.Sleep(messageDeleteDelay)
 			bot.ChannelMessageDelete(ctx.ChannelID, ctx.Message.ID)
 			bot.ChannelMessageDelete(ctx.ChannelID, msg.ID)
 			return
 		}
 		if err = s.changeItemsStatus(ctx.Author.ID, ids, "active", "completed"); err != nil {
-			msg, _ := bot.ChannelMessageSend(ctx.ChannelID, fmt.Sprint("Error checking off items: ", err))
+			msg, _ := bot.ChannelMessageSend(ctx.ChannelID, fmt.Sprint("Error checking off items: ", err)+".")
 			time.Sleep(messageDeleteDelay)
 			bot.ChannelMessageDelete(ctx.ChannelID, ctx.Message.ID)
 			bot.ChannelMessageDelete(ctx.ChannelID, msg.ID)
 			return
 		}
-		msg, _ := bot.ChannelMessageSend(ctx.ChannelID, "Successfully marked "+strings.Join(ids, ", ")+" as done")
+		msg, _ := bot.ChannelMessageSend(ctx.ChannelID, "Successfully marked "+strings.Join(ids, ", ")+" as done.")
 		time.Sleep(messageDeleteDelay)
 		bot.ChannelMessageDelete(ctx.ChannelID, ctx.Message.ID)
 		bot.ChannelMessageDelete(ctx.ChannelID, msg.ID)
