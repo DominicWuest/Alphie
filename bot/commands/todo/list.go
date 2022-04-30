@@ -17,7 +17,7 @@ func (s Todo) List(bot *discord.Session, ctx *discord.MessageCreate, args []stri
 	if len(args) == 0 {
 		todos, err = s.getActiveTodos(ctx.Author.ID)
 	} else if len(args) > 1 {
-		bot.ChannelMessageSend(ctx.ChannelID, "Couldn't interpret command\n"+s.listHelp())
+		bot.ChannelMessageSend(ctx.ChannelID, "Couldn't interpret command.\n"+s.listHelp())
 		return
 	} else {
 		switch args[0] {
@@ -33,13 +33,13 @@ func (s Todo) List(bot *discord.Session, ctx *discord.MessageCreate, args []stri
 			bot.ChannelMessageSend(ctx.ChannelID, s.listHelp())
 			return
 		default:
-			bot.ChannelMessageSend(ctx.ChannelID, "Couldn't interpret command\n"+s.listHelp())
+			bot.ChannelMessageSend(ctx.ChannelID, "Couldn't interpret command.\n"+s.listHelp())
 			return
 		}
 	}
 
 	if err != nil {
-		bot.ChannelMessageSend(ctx.ChannelID, fmt.Sprint("Error while trying to list ", ctx.Author.Username, "'s items", err))
+		bot.ChannelMessageSend(ctx.ChannelID, fmt.Sprint("Error while trying to list ", ctx.Author.Username, "'s items", err, "."))
 	} else {
 		bot.ChannelMessageSendEmbed(ctx.ChannelID, todosToEmbed(todos, ctx))
 	}
