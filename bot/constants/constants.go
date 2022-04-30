@@ -45,6 +45,7 @@ func InitialiseConstants(bot *discord.Session) {
 	Emojis = make(map[string]string)
 	EmojiIDs = make(map[string]string)
 	// Setting a few default emojis
+	Emojis["bloom"] = "🌼"
 	Emojis["success"] = "✅"
 	Emojis["fail"] = "✖"
 	Emojis["pause"] = "⏸️"

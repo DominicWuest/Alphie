@@ -28,19 +28,11 @@ func (s *Todo) HandleCommand(bot *discord.Session, ctx *discord.MessageCreate, a
 		sx.Add(bot, ctx, args[2:])
 	case "list": // List items
 		sx.List(bot, ctx, args[2:])
-	case "done":
-		fallthrough
-	case "check":
+	case "done", "check":
 		sx.Done(bot, ctx, args[2:])
-	case "remove": // Removes an item
-		fallthrough
-	case "delete":
+	case "remove", "delete": // Removes an item
 		sx.Delete(bot, ctx, args[2:])
-	case "subscribe": // Subscribes to a list or lists all possible ones
-		fallthrough
-	case "subscription":
-		fallthrough
-	case "subscriptions":
+	case "subscribe", "subscription", "subscriptions", "schedule", "schedules": // Subscribes to a list or lists all possible ones
 		sx.Subscribe(bot, ctx, args[2:])
 	case "archive": // Archives an item
 		sx.Archive(bot, ctx, args[2:])

@@ -65,7 +65,7 @@ func ready(bot *discord.Session, event *discord.Ready) {
 	bot.UpdateStatusComplex(discord.UpdateStatusData{
 		Status: "online",
 		Activities: []*discord.Activity{{
-			Name: "the Pikmin Bloom",
+			Name: "the Pikmin Bloom " + constants.Emojis["bloom"],
 			Type: 3, // Type = Watching
 		}},
 	})
@@ -74,7 +74,7 @@ func ready(bot *discord.Session, event *discord.Ready) {
 func messageCreate(bot *discord.Session, ctx *discord.MessageCreate) {
 
 	// Ignore our own messages
-	if ctx.Author.ID == bot.State.User.ID {
+	if ctx.Author.Bot {
 		return
 	}
 

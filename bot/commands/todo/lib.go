@@ -310,7 +310,13 @@ func (s *Todo) sendItemSelectMessage(bot *discord.Session, ctx *discord.MessageC
 		bot.InteractionRespond(interaction, &discord.InteractionResponse{
 			Type: discord.InteractionResponseDeferredMessageUpdate,
 		})
-		if interaction.Member.User.ID != ctx.Author.ID {
+
+		user := interaction.User
+		if user == nil {
+			user = interaction.Member.User
+		}
+
+		if user.ID != ctx.Author.ID {
 			return
 		}
 
@@ -322,7 +328,13 @@ func (s *Todo) sendItemSelectMessage(bot *discord.Session, ctx *discord.MessageC
 		bot.InteractionRespond(interaction, &discord.InteractionResponse{
 			Type: discord.InteractionResponseDeferredMessageUpdate,
 		})
-		if interaction.Member.User.ID != ctx.Author.ID {
+
+		user := interaction.User
+		if user == nil {
+			user = interaction.Member.User
+		}
+
+		if user.ID != ctx.Author.ID {
 			return
 		}
 
@@ -339,7 +351,13 @@ func (s *Todo) sendItemSelectMessage(bot *discord.Session, ctx *discord.MessageC
 		bot.InteractionRespond(interaction, &discord.InteractionResponse{
 			Type: discord.InteractionResponseDeferredMessageUpdate,
 		})
-		if interaction.Member.User.ID != ctx.Author.ID {
+
+		user := interaction.User
+		if user == nil {
+			user = interaction.Member.User
+		}
+
+		if user.ID != ctx.Author.ID {
 			return
 		}
 

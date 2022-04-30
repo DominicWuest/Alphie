@@ -36,7 +36,11 @@ func (s Todo) Add(bot *discord.Session, ctx *discord.MessageCreate, args []strin
 			},
 		})
 		constants.Handlers.MessageComponents[interactionId] = func(interaction *discord.Interaction) {
-			if interaction.Member.User.ID == ctx.Author.ID {
+			user := interaction.User
+			if user == nil {
+				user = interaction.Member.User
+			}
+			if user.ID == ctx.Author.ID {
 				delete(constants.Handlers.MessageComponents, interactionId)
 				bot.ChannelMessageDelete(msg.ChannelID, msg.ID)
 			}
@@ -95,13 +99,19 @@ func (s Todo) addItemModalCreate(bot *discord.Session, interaction *discord.Inte
 		bot.InteractionRespond(interaction, &discord.InteractionResponse{
 			Type: discord.InteractionResponseDeferredMessageUpdate,
 		})
+
+		user := interaction.User
+		if user == nil {
+			user = interaction.Member.User
+		}
+
 		// Get title
 		titleRow := interaction.ModalSubmitData().Components[0].(*discord.ActionsRow)
 		title := (*titleRow.Components[0].(*discord.TextInput)).Value
 		// Get description
 		descRow := *interaction.ModalSubmitData().Components[1].(*discord.ActionsRow)
 		desc := (*descRow.Components[0].(*discord.TextInput)).Value
-		s.addItem(interaction.Member.User.ID, title, desc)
+		s.addItem(user.ID, title, desc)
 	}
 }
 
