@@ -7,6 +7,10 @@ import (
 	_ "github.com/lib/pq"
 )
 
+func (s Todo) listHelp() string {
+	return "Usage: `todo list [all|active|archived|done]`"
+}
+
 func (s Todo) List(bot *discord.Session, ctx *discord.MessageCreate, args []string) {
 	s.checkUserPresence(ctx.Author.ID)
 
@@ -43,8 +47,4 @@ func (s Todo) List(bot *discord.Session, ctx *discord.MessageCreate, args []stri
 	} else {
 		bot.ChannelMessageSendEmbed(ctx.ChannelID, todosToEmbed(todos, ctx))
 	}
-}
-
-func (s Todo) listHelp() string {
-	return "Usage: `todo list [all|active|archived|done]`"
 }
