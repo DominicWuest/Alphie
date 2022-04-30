@@ -76,9 +76,13 @@ func (s Todo) subscriptionAdd(bot *discord.Session, ctx *discord.MessageCreate, 
 
 	// Fold the users subscription forest to make it more presentable
 	listedItems := s.foldSubscriptionForest(s.getUserSubscriptionForest(ctx.Author.ID), func(acc []todoItem, curr subscriptionItemNode) []todoItem {
+		stringIndexes := []string{}
+		for _, index := range curr.nodeIndexes {
+			stringIndexes = append(stringIndexes, fmt.Sprint(index))
+		}
 		rootItem := todoItem{
 			ID:          len(acc),
-			Title:       curr.value.name,
+			Title:       strings.Join(stringIndexes, ".") + ". " + curr.value.name,
 			Description: curr.value.id,
 		}
 		// Mark item if the user is subscribed
@@ -302,10 +306,78 @@ func (s Todo) deleteSubscriptions(userId string, items []string) []string {
 	defer db.Close()
 
 	deleted := []string{}
+	// Filter out items which are descendants of other items
+	// If we delete an ancestor of an item, the item itself will be deleted anyway
+	for _, subscription := range items {
+		ancestors := s.getAncestors(subscription)
+		// If any items are part of the items ancestors, we don't have to delete the item itself
+		hasAncestorsToDelete := false
+		for _, ancestor := range ancestors {
+			// Skip when the ancestor is the item itself
+			if ancestor == subscription {
+				continue
+			}
+			for _, item := range items {
+				// There is an ancestor we want to delete
+				if item == ancestor {
+					hasAncestorsToDelete = true
+					break
+				}
+			}
+			if hasAncestorsToDelete {
+				break
+			}
+		}
 
-	fmt.Println(fmt.Sprint("Deleting ", items))
+		if !hasAncestorsToDelete {
+			deleted = append(deleted, subscription)
+			s.deleteSubscription(userId, subscription)
+		}
+	}
+
+	fmt.Println(fmt.Sprint("Deleting ", deleted))
 
 	return deleted
+}
+
+// Deletes a single subscription
+func (s Todo) deleteSubscription(userId, subscription string) {
+	db, _ := sql.Open("postgres", s.PsqlConn)
+	defer db.Close()
+
+	// If the subscription is the root of the subscription tree, we can just delete the subscription
+	rows, _ := db.Query(`SELECT * FROM todo.subscribed_to WHERE discord_user=$1 AND subscription=$2`,
+		userId,
+		subscription,
+	)
+	if rows.Next() {
+		db.Exec(`DELETE FROM todo.subscribed_to WHERE discord_user=$1 AND subscription=$2`,
+			userId,
+			subscription,
+		)
+		return
+	}
+
+	// Else subscribe to all nodes on the same layer as the subscription itself
+	// Get the parent node
+	var parent string
+	rows, _ = db.Query(`SELECT parent FROM todo.subscription_child WHERE child=$1`, subscription)
+	rows.Next()
+	rows.Scan(&parent)
+
+	// Subscribe to all children of the parent except the subscription itself
+	db.Exec(`INSERT INTO todo.subscribed_to
+		(SELECT $1, child FROM todo.subscription_child WHERE parent=$2 AND child <> $3)`,
+		userId,
+		parent,
+		subscription,
+	)
+
+	// Delete the root of the original subscription tree
+	db.Exec(`DELETE FROM todo.subscribed_to WHERE discord_user=$1 AND subscription=ANY($2)`,
+		userId,
+		pq.Array(s.getAncestors(subscription)),
+	)
 }
 
 // Adds an active subscription item with an id of id to all users subscribed to it
