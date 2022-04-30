@@ -8,28 +8,28 @@ INSERT INTO todo.subscription (id, subscription_name, schedule, semester) VALUES
 INSERT INTO todo.subscription (id, subscription_name, schedule, semester) VALUES (
     '401-0212-16L',
     'Analysis 1',
-    '@every 1m', -- temporary for testing
+    '0 18 * * FRI',
     'F'
 );
 
 INSERT INTO todo.subscription (id, subscription_name, schedule, semester) VALUES (
     '252-0028-00L',
     'Digital Design and Computer Architecture',
-    '@every 1m', -- temporary for testing
+    '0 0 * * TUE',
     'F'
 );
 
 INSERT INTO todo.subscription (id, subscription_name, schedule, semester) VALUES (
     '252-0029-00L',
     'Parallel Programming',
-    '@every 1m', -- temporary for testing
+    '0 18 * * TUE',
     'F'
 );
 
 INSERT INTO todo.subscription (id, subscription_name, schedule, semester) VALUES (
     '252-0030-00L',
     'Algorithms and Probability',
-    '@every 1m', -- temporary for testing
+    '0 0 * * THU',
     'F'
 );
 
