@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"log"
 	"math/rand"
 	"strconv"
 	"strings"
@@ -75,6 +76,8 @@ func (s Blackjack) Init(args ...interface{}) constants.Command {
 }
 
 func (s *Blackjack) startNewGame(bot *discord.Session, ctx *discord.MessageCreate) {
+	log.Println(constants.Yellow, ctx.Author.Username, "started a new Blackjack game")
+
 	s.player = ctx.Author
 	s.state = dealing
 	s.ctx = ctx
@@ -403,6 +406,7 @@ func (s *Blackjack) handleRestart(interaction *discord.Interaction) {
 
 func (s *Blackjack) endGame(playerWinner bool) {
 	// playerWinner = true <=> player won
+	log.Println(constants.Yellow, s.player.Username, "stopped the Blackjack game")
 	s.state = over
 
 	result := -1

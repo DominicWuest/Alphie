@@ -3,6 +3,7 @@ package todo
 import (
 	"database/sql"
 	"fmt"
+	"log"
 	"regexp"
 	"strings"
 	"time"
@@ -71,6 +72,7 @@ func (s Todo) checkUserPresence(id string) {
 	)
 	defer rows.Close()
 	if !rows.Next() { // User not yet in DB
+		log.Println(constants.Blue, "Added new user with id", id, "to database")
 		db.Exec(
 			`INSERT INTO todo.discord_user(id) VALUES ($1)`,
 			id,
@@ -89,12 +91,16 @@ func (s Todo) CreateTask(author, title, description string) (int, error) {
 		description,
 	)
 	if err != nil {
+		log.Println(constants.Red, "Couldn't create new task", err)
 		return 0, err
 	}
 
+	// Get the returned id
 	var taskId int
 	rows.Next()
 	rows.Scan(&taskId)
+
+	log.Printf("%s Created new task; creator: %s, title: %s, description: %s\n", constants.Blue, author, title, description)
 
 	return taskId, nil
 }
@@ -135,10 +141,7 @@ func (s Todo) getAllTodos(userId string) ([]todoItem, error) {
 func (s Todo) getUserTODOs(user, table string) ([]todoItem, error) {
 	items := []todoItem{}
 
-	db, err := sql.Open("postgres", s.PsqlConn)
-	if err != nil {
-		return nil, err
-	}
+	db, _ := sql.Open("postgres", s.PsqlConn)
 	defer db.Close()
 
 	rows, err := db.Query(
@@ -146,6 +149,7 @@ func (s Todo) getUserTODOs(user, table string) ([]todoItem, error) {
 		user,
 	)
 	if err != nil {
+		log.Println(constants.Red, "Couldn't get users TODOs", err, "User:", user, "Table:", table)
 		return nil, err
 	}
 
@@ -154,6 +158,7 @@ func (s Todo) getUserTODOs(user, table string) ([]todoItem, error) {
 		rows.Scan(&nextItem.ID, &nextItem.Creator, &nextItem.Title, &nextItem.Description)
 		items = append(items, nextItem)
 	}
+	log.Printf("%s Got users TODOs; User: %s, Table: %s\n", constants.Blue, user, table)
 
 	return items, nil
 }
@@ -186,10 +191,7 @@ func todosToEmbed(todos []todoItem, ctx *discord.MessageCreate) *discord.Message
 
 // Changes the items status from "from" to "to"
 func (s Todo) changeItemsStatus(userId string, itemIds []string, from, to string) error {
-	db, err := sql.Open("postgres", s.PsqlConn)
-	if err != nil {
-		return err
-	}
+	db, _ := sql.Open("postgres", s.PsqlConn)
 	defer db.Close()
 
 	// Check first if all IDs are valid
@@ -198,6 +200,7 @@ func (s Todo) changeItemsStatus(userId string, itemIds []string, from, to string
 		pq.Array(itemIds),
 	)
 	if err != nil {
+		log.Println(constants.Red, "Couldn't change item status", err)
 		return err
 	}
 
@@ -227,6 +230,7 @@ func (s Todo) changeItemsStatus(userId string, itemIds []string, from, to string
 		pq.Array(itemIds),
 	)
 	if err != nil {
+		log.Println(constants.Red, "Couldn't change item status", err)
 		return err
 	}
 
@@ -236,8 +240,11 @@ func (s Todo) changeItemsStatus(userId string, itemIds []string, from, to string
 		pq.Array(itemIds),
 	)
 	if err != nil {
+		log.Println(constants.Red, "Couldn't change item status", err)
 		return err
 	}
+
+	log.Printf("%s Changed users %s items %v from %s to %s\n", constants.Blue, userId, itemIds, from, to)
 
 	return nil
 }

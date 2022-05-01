@@ -3,6 +3,7 @@ package todo
 import (
 	"database/sql"
 	"fmt"
+	"log"
 	"strconv"
 	"strings"
 	"time"
@@ -141,6 +142,8 @@ Items marked with `+constants.Emojis["success"]+" are already in your subscripti
 				content = "Didn't add any new subscriptions."
 			}
 
+			log.Println(constants.Yellow, "User", ctx.Author.Username, "newly subscribed to", newlySubscribed)
+
 			bot.ChannelMessageEditComplex(&discord.MessageEdit{
 				Content:    &content,
 				Components: []discord.MessageComponent{},
@@ -215,6 +218,8 @@ If you unsubscribe from an item, you will automatically be unsubscribed from all
 			if len(unsubscribed) == 0 {
 				content = "Didn't delete any subscriptions."
 			}
+
+			log.Println(constants.Yellow, "User", ctx.Author.Username, "unsubscribed from", unsubscribed)
 
 			bot.ChannelMessageEditComplex(&discord.MessageEdit{
 				Content:    &content,
@@ -415,6 +420,8 @@ func (s Todo) createSubscriptionItem(id string) {
 	rows, _ := db.Query(`SELECT subscription_name FROM todo.subscription WHERE id=$1`, id)
 	rows.Next()
 	rows.Scan(&name)
+
+	log.Println(constants.Blue, "Created new subscription item with id", id, "and name", name)
 
 	// Create the task with a userid of the bot
 	taskId, _ := s.CreateTask("0", name, "Automatically created for subscription "+id)

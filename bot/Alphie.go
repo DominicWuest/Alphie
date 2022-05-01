@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"math/rand"
 	"os"
 	"os/signal"
@@ -34,28 +35,31 @@ func main() {
 
 	bot, err := discord.New("Bot " + os.Getenv("API_TOKEN"))
 	if err != nil {
-		fmt.Println("Error initializing Discord bot: ", err)
-		return
+		log.Fatalln(constants.Red, "Error initializing Discord bot:", err)
 	}
 
 	bot.AddHandler(ready)
 	bot.AddHandler(messageCreate)
 	bot.AddHandler(interactionCreate)
+	bot.AddHandler(func(bot *discord.Session, event *discord.RateLimit) {
+		log.Println(constants.Red, "Getting rate limited!")
+	})
 
 	err = bot.Open()
 	if err != nil {
-		fmt.Println("Error opening Discord session: ", err)
-		return
+		log.Fatalln(constants.Red, "Error opening Discord session:", err)
 	}
 
 	// Wait here until term signal is received.
 	fmt.Println("Alphie is ready to pluck!")
+	log.Println(constants.Green, "Started Bot.")
 	sc := make(chan os.Signal, 1)
 	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM, os.Interrupt)
 	<-sc
 
 	// Cleanly close down the Discord session.
 	bot.Close()
+	log.Println(constants.Green, "Stopped Bot.")
 }
 
 // Set activity to "Watching the Pikmin bloom"
@@ -104,9 +108,11 @@ func messageCreate(bot *discord.Session, ctx *discord.MessageCreate) {
 	command := strings.Split(ctx.Content, " ")[1:]
 	parsedCommand, found := COMMANDS[command[0]]
 	if found {
+		log.Println(constants.Yellow, ctx.Author.Username, "used command", ctx.Content)
 		parsedCommand.HandleCommand(bot, ctx, command)
+	} else {
+		log.Println(constants.Yellow, ctx.Author.Username, "used unknown command", ctx.Content)
 	}
-
 }
 
 func interactionCreate(bot *discord.Session, interaction *discord.InteractionCreate) {
@@ -120,12 +126,12 @@ func interactionCreate(bot *discord.Session, interaction *discord.InteractionCre
 		id := interaction.ModalSubmitData().CustomID
 		handler, found = constants.Handlers.ModalSubmit[id]
 	default:
-		fmt.Println("Couldn't associate Interaction to any known type", interaction.Data.Type().String())
+		log.Println(constants.Red, "Couldn't associate Interaction to any known type", interaction.Data.Type().String())
 	}
 
 	if found {
 		go handler(interaction.Interaction)
 	} else {
-		fmt.Println("Interaction created but ID not found")
+		log.Println(constants.Red, "Interaction created but ID not found", interaction.ID)
 	}
 }
