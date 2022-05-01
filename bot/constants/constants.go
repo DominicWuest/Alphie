@@ -1,7 +1,7 @@
 package constants
 
 import (
-	"fmt"
+	"log"
 	"os"
 	"strings"
 
@@ -28,13 +28,19 @@ var Emojis map[string]string
 var EmojiIDs map[string]string
 var Handlers HandlerStruct
 
+// For colors in logging output
+const Red = "\033[31m"    // Error
+const Green = "\033[32m"  // General System Info
+const Yellow = "\033[33m" // Command Info
+const Blue = "\033[34m"   // Database logs
+
 func InitialiseConstants(bot *discord.Session) {
 	// Parsing HOME_GUILD_ID
 	HomeGuildID = os.Getenv("HOME_GUILD")
 
 	LocalHomeGuild, err := bot.Guild(HomeGuildID)
 	if err != nil {
-		fmt.Println("Couldn't get home guild: ", err)
+		log.Fatalln(Red, "Couldn't get home guild:", err)
 	}
 	HomeGuild = LocalHomeGuild
 
