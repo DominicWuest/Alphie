@@ -50,7 +50,12 @@ func (s Todo) Add(bot *discord.Session, ctx *discord.MessageCreate, args []strin
 		bot.ChannelMessageSend(ctx.ChannelID, s.addHelp())
 	} else { // Add new item with title
 		s.addItem(ctx.Author.ID, strings.Join(args, " "), "")
-		msg, _ := bot.ChannelMessageSend(ctx.ChannelID, "Successfully added item(s) with title "+strings.Join(args, " ")+".")
+		msg, _ := bot.ChannelMessageSendComplex(ctx.ChannelID, &discord.MessageSend{
+			Content: "Successfully added item(s) with title " + strings.Join(args, " ") + ".",
+			AllowedMentions: &discord.MessageAllowedMentions{
+				Users: []string{},
+			},
+		})
 		time.Sleep(messageDeleteDelay)
 		bot.ChannelMessageDelete(msg.ChannelID, msg.ID)
 	}
