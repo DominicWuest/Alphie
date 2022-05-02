@@ -257,6 +257,8 @@ func (s Todo) InitialiseSubscriptions() error {
 	// Initialise all subscription cronjobs
 	rows, _ := db.Query(`SELECT id, schedule, semester FROM todo.subscription`)
 
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+
 	for rows.Next() {
 		var id string
 		var schedule string
@@ -264,7 +266,11 @@ func (s Todo) InitialiseSubscriptions() error {
 		rows.Scan(&id, &schedule, &semester)
 
 		if len(schedule) != 0 {
-			c.AddFunc(schedule, func() {
+			schedule, err := parser.Parse(schedule)
+			if err != nil {
+				log.Println(constants.Red, "Failed to add new schedule: ", err)
+			}
+			c.Schedule(schedule, cron.FuncJob(func() {
 				// Don't creat the subscription item if the task is for another semester
 				_, calendarWeek := time.Now().ISOWeek()
 				if semester == "F" &&
@@ -281,7 +287,7 @@ func (s Todo) InitialiseSubscriptions() error {
 					return
 				}
 				s.createSubscriptionItem(id)
-			})
+			}))
 		}
 	}
 	c.Start()
