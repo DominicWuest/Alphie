@@ -18,7 +18,7 @@ import (
 )
 
 // Initialising constants
-const PREFIX string = ":) "
+var prefixes []string = []string{":) ", "(: ", ": ) ", "al ", "🙂 "}
 
 var COMMANDS map[string]constants.Command = make(map[string]constants.Command)
 
@@ -101,11 +101,20 @@ func messageCreate(bot *discord.Session, ctx *discord.MessageCreate) {
 	}
 
 	// Ignore messages without the correct prefix
-	if !strings.HasPrefix(ctx.Content, PREFIX) {
+	hasPrefix := false
+	for _, prefix := range prefixes {
+		if strings.HasPrefix(ctx.Content, prefix) {
+			ctx.Content = ctx.Content[len(prefix):]
+			hasPrefix = true
+			break
+		}
+	}
+
+	if !hasPrefix {
 		return
 	}
 
-	command := strings.Split(ctx.Content, " ")[1:]
+	command := strings.Split(ctx.Content, " ")
 	parsedCommand, found := COMMANDS[command[0]]
 	if found {
 		log.Println(constants.Yellow, ctx.Author.Username, "used command", ctx.Content)
