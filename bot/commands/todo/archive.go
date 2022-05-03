@@ -1,7 +1,6 @@
 package todo
 
 import (
-	"database/sql"
 	"fmt"
 	"strings"
 	"time"
@@ -132,15 +131,9 @@ func (s Todo) archiveItems(userId string, items []string) error {
 		return fmt.Errorf("user %s has no active or completed task with id %s", userId, strings.Join(itemsCopy, ", "))
 	}
 
-	db, err := sql.Open("postgres", s.PsqlConn)
-	if err != nil {
-		return err
-	}
-	defer db.Close()
-
 	// Delete items
 	for _, table := range []string{"active", "completed"} {
-		_, err = db.Exec(fmt.Sprintf(`DELETE FROM todo.%s WHERE discord_user=$1 AND task=any($2)`, table),
+		_, err = s.DB.Exec(fmt.Sprintf(`DELETE FROM todo.%s WHERE discord_user=$1 AND task=any($2)`, table),
 			userId,
 			pq.Array(items),
 		)
@@ -150,7 +143,7 @@ func (s Todo) archiveItems(userId string, items []string) error {
 	}
 
 	// Put all items into archived
-	_, err = db.Exec(`INSERT INTO todo.archived (discord_user, task) VALUES ($1, UNNEST($2::INTEGER[]))`,
+	_, err = s.DB.Exec(`INSERT INTO todo.archived (discord_user, task) VALUES ($1, UNNEST($2::INTEGER[]))`,
 		userId,
 		pq.Array(items),
 	)

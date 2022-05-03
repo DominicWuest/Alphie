@@ -1,7 +1,6 @@
 package todo
 
 import (
-	"database/sql"
 	"strings"
 	"time"
 
@@ -121,13 +120,10 @@ func (s Todo) addItemModalCreate(bot *discord.Session, interaction *discord.Inte
 
 // Adds an active todo item
 func (s Todo) addItem(author, title, description string) {
-	db, _ := sql.Open("postgres", s.PsqlConn)
-	defer db.Close()
-
 	taskId, _ := s.CreateTask(author, title, description)
 
 	// Insert task into active
-	db.Exec(
+	s.DB.Exec(
 		`INSERT INTO todo.active (discord_user, task) VALUES ($1, $2)`,
 		author,
 		taskId,

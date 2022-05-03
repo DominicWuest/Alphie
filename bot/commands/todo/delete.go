@@ -1,7 +1,6 @@
 package todo
 
 import (
-	"database/sql"
 	"fmt"
 	"strings"
 	"time"
@@ -124,15 +123,9 @@ func (s Todo) deleteItems(userId string, items []string) error {
 		return fmt.Errorf("user %s has no task with id %s", userId, strings.Join(itemsCopy, ", "))
 	}
 
-	db, err := sql.Open("postgres", s.PsqlConn)
-	if err != nil {
-		return err
-	}
-	defer db.Close()
-
 	// Delete items
 	for _, table := range []string{"active", "completed", "archived"} {
-		_, err = db.Exec(fmt.Sprintf(`DELETE FROM todo.%s WHERE discord_user=$1 AND task=any($2)`, table),
+		_, err = s.DB.Exec(fmt.Sprintf(`DELETE FROM todo.%s WHERE discord_user=$1 AND task=any($2)`, table),
 			userId,
 			pq.Array(items),
 		)
