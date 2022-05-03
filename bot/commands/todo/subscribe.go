@@ -1,7 +1,6 @@
 package todo
 
 import (
-	"database/sql"
 	"fmt"
 	"log"
 	"strconv"
@@ -252,10 +251,8 @@ func (s Todo) InitialiseSubscriptions() error {
 	// Initialise the subscription tree for listing subscriptions and
 	subscriptionForest = s.getSubscriptionForest()
 
-	db, _ := sql.Open("postgres", s.PsqlConn)
-	defer db.Close()
 	// Initialise all subscription cronjobs
-	rows, _ := db.Query(`SELECT id, schedule, semester FROM todo.subscription`)
+	rows, _ := s.DB.Query(`SELECT id, schedule, semester FROM todo.subscription`)
 
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
@@ -297,14 +294,11 @@ func (s Todo) InitialiseSubscriptions() error {
 
 // Adds the subscriptions to the user with id userId and returns newly added subscriptions
 func (s Todo) addSubscriptions(userId string, items []string) []string {
-	db, _ := sql.Open("postgres", s.PsqlConn)
-	defer db.Close()
-
 	added := []string{}
 	// Check if the user is subscribed to any ancestors
 	for _, subscription := range items {
 		ancestors := s.getAncestors(subscription)
-		rows, _ := db.Query(`SELECT * FROM todo.subscribed_to WHERE discord_user=$1	AND subscription=ANY($2)`,
+		rows, _ := s.DB.Query(`SELECT * FROM todo.subscribed_to WHERE discord_user=$1	AND subscription=ANY($2)`,
 			userId,
 			pq.Array(ancestors),
 		)
@@ -322,14 +316,14 @@ func (s Todo) addSubscriptions(userId string, items []string) []string {
 				layer = temp
 			}
 			// Delete all subscription children
-			db.Exec(`DELETE FROM todo.subscribed_to WHERE discord_user=$1 AND subscription=ANY($2)`,
+			s.DB.Exec(`DELETE FROM todo.subscribed_to WHERE discord_user=$1 AND subscription=ANY($2)`,
 				userId,
 				pq.Array(children),
 			)
 
 			// Add subscription
 			added = append(added, subscription)
-			db.Exec(`INSERT INTO todo.subscribed_to (discord_user, subscription) VALUES ($1, $2)`,
+			s.DB.Exec(`INSERT INTO todo.subscribed_to (discord_user, subscription) VALUES ($1, $2)`,
 				userId,
 				subscription,
 			)
@@ -341,9 +335,6 @@ func (s Todo) addSubscriptions(userId string, items []string) []string {
 
 // Unsubscribes the user with id userId from items and returns deleted subscriptions
 func (s Todo) deleteSubscriptions(userId string, items []string) []string {
-	db, _ := sql.Open("postgres", s.PsqlConn)
-	defer db.Close()
-
 	deleted := []string{}
 	// Filter out items which are descendants of other items
 	// If we delete an ancestor of an item, the item itself will be deleted anyway
@@ -379,16 +370,13 @@ func (s Todo) deleteSubscriptions(userId string, items []string) []string {
 
 // Deletes a single subscription
 func (s Todo) deleteSubscription(userId, subscription string) {
-	db, _ := sql.Open("postgres", s.PsqlConn)
-	defer db.Close()
-
 	// If the subscription is the root of the subscription tree, we can just delete the subscription
-	rows, _ := db.Query(`SELECT * FROM todo.subscribed_to WHERE discord_user=$1 AND subscription=$2`,
+	rows, _ := s.DB.Query(`SELECT * FROM todo.subscribed_to WHERE discord_user=$1 AND subscription=$2`,
 		userId,
 		subscription,
 	)
 	if rows.Next() {
-		db.Exec(`DELETE FROM todo.subscribed_to WHERE discord_user=$1 AND subscription=$2`,
+		s.DB.Exec(`DELETE FROM todo.subscribed_to WHERE discord_user=$1 AND subscription=$2`,
 			userId,
 			subscription,
 		)
@@ -398,12 +386,12 @@ func (s Todo) deleteSubscription(userId, subscription string) {
 	// Else subscribe to all nodes on the same layer as the subscription itself
 	// Get the parent node
 	var parent string
-	rows, _ = db.Query(`SELECT parent FROM todo.subscription_child WHERE child=$1`, subscription)
+	rows, _ = s.DB.Query(`SELECT parent FROM todo.subscription_child WHERE child=$1`, subscription)
 	rows.Next()
 	rows.Scan(&parent)
 
 	// Subscribe to all children of the parent except the subscription itself
-	db.Exec(`INSERT INTO todo.subscribed_to
+	s.DB.Exec(`INSERT INTO todo.subscribed_to
 		(SELECT $1, child FROM todo.subscription_child WHERE parent=$2 AND child <> $3)`,
 		userId,
 		parent,
@@ -411,7 +399,7 @@ func (s Todo) deleteSubscription(userId, subscription string) {
 	)
 
 	// Delete the root of the original subscription tree
-	db.Exec(`DELETE FROM todo.subscribed_to WHERE discord_user=$1 AND subscription=ANY($2)`,
+	s.DB.Exec(`DELETE FROM todo.subscribed_to WHERE discord_user=$1 AND subscription=ANY($2)`,
 		userId,
 		pq.Array(s.getAncestors(subscription)),
 	)
@@ -419,11 +407,8 @@ func (s Todo) deleteSubscription(userId, subscription string) {
 
 // Adds an active subscription item with an id of id to all users subscribed to it
 func (s Todo) createSubscriptionItem(id string) {
-	db, _ := sql.Open("postgres", s.PsqlConn)
-	defer db.Close()
-
 	var name string
-	rows, _ := db.Query(`SELECT subscription_name FROM todo.subscription WHERE id=$1`, id)
+	rows, _ := s.DB.Query(`SELECT subscription_name FROM todo.subscription WHERE id=$1`, id)
 	rows.Next()
 	rows.Scan(&name)
 
@@ -436,7 +421,7 @@ func (s Todo) createSubscriptionItem(id string) {
 	ancestors := s.getAncestors(id)
 
 	// Add the task to all users who are subscribed to one of the ancestors
-	db.Exec(`INSERT INTO todo.active (discord_user, task)
+	s.DB.Exec(`INSERT INTO todo.active (discord_user, task)
 		(
 			SELECT discord_user, $1 FROM todo.subscribed_to
 			WHERE subscription=ANY($2)
@@ -448,10 +433,7 @@ func (s Todo) createSubscriptionItem(id string) {
 
 // Gets all the ancestors and the node itself of a subscription with id rootId
 func (s Todo) getAncestors(rootId string) []string {
-	db, _ := sql.Open("postgres", s.PsqlConn)
-	defer db.Close()
-
-	rows, _ := db.Query(`
+	rows, _ := s.DB.Query(`
 	WITH RECURSIVE ids AS (
 		SELECT id FROM todo.subscription WHERE id=$1
 
@@ -473,11 +455,8 @@ func (s Todo) getAncestors(rootId string) []string {
 
 // Returns the roots of the forest of the forest made up by the subscriptions and initialises all the children of the nodes
 func (s Todo) getSubscriptionForest() []*subscriptionItemNode {
-	db, _ := sql.Open("postgres", s.PsqlConn)
-	defer db.Close()
-
 	// Get the roots
-	rows, _ := db.Query(`SELECT id, subscription_name, schedule FROM todo.subscription 
+	rows, _ := s.DB.Query(`SELECT id, subscription_name, schedule FROM todo.subscription 
 	WHERE id NOT IN (SELECT child FROM todo.subscription_child)
 	ORDER BY id ASC`)
 
@@ -511,10 +490,7 @@ func (s Todo) getSubscriptionForest() []*subscriptionItemNode {
 
 // Returns all children of a subscription with id nodeId and initialises its children recursively
 func (s Todo) getChildren(nodeId string) []*subscriptionItemNode {
-	db, _ := sql.Open("postgres", s.PsqlConn)
-	defer db.Close()
-
-	rows, _ := db.Query(
+	rows, _ := s.DB.Query(
 		`SELECT id, subscription_name, schedule FROM todo.subscription 
 		JOIN 
 		todo.subscription_child ON id=child WHERE parent=$1`,
@@ -552,11 +528,8 @@ func (s Todo) initChildrenIndexes(node *subscriptionItemNode, indexes []int) {
 
 // Returns the forest making up all subscriptions as todoItems, with items marked to which the user is subscribed to
 func (s Todo) getUserSubscriptionForest(userId string) []*subscriptionItemNode {
-	db, _ := sql.Open("postgres", s.PsqlConn)
-	defer db.Close()
-
 	// Get all items the user is subscribed to
-	rows, _ := db.Query(
+	rows, _ := s.DB.Query(
 		`SELECT id, subscription_name FROM todo.subscription 
 		JOIN todo.subscribed_to ON id=subscription
 		WHERE discord_user=$1`,

@@ -15,7 +15,7 @@ import (
 )
 
 type Todo struct {
-	PsqlConn        string
+	DB              *sql.DB
 	SelectedOptions map[string][]string // Keeps track of items a user selected in a select menu, so we can react on button clicks
 }
 
@@ -64,16 +64,14 @@ func deduplicate(arr []string) []string {
 
 // Checks if a user is present in the database and inserts them if not
 func (s Todo) checkUserPresence(id string) {
-	db, _ := sql.Open("postgres", s.PsqlConn)
-	defer db.Close()
-	rows, _ := db.Query(
+	rows, _ := s.DB.Query(
 		`SELECT id FROM todo.discord_user WHERE id=$1`,
 		id,
 	)
 	defer rows.Close()
 	if !rows.Next() { // User not yet in DB
 		log.Println(constants.Blue, "Added new user with id", id, "to database")
-		db.Exec(
+		s.DB.Exec(
 			`INSERT INTO todo.discord_user(id) VALUES ($1)`,
 			id,
 		)
@@ -81,10 +79,8 @@ func (s Todo) checkUserPresence(id string) {
 }
 
 func (s Todo) CreateTask(author, title, description string) (int, error) {
-	db, _ := sql.Open("postgres", s.PsqlConn)
-	defer db.Close()
 	// Insert task into task table and get its ID
-	rows, err := db.Query(
+	rows, err := s.DB.Query(
 		`INSERT INTO todo.task (creator, title, description) VALUES ($1, $2, $3) RETURNING id`,
 		author,
 		title,
@@ -141,10 +137,7 @@ func (s Todo) getAllTodos(userId string) ([]todoItem, error) {
 func (s Todo) getUserTODOs(user, table string) ([]todoItem, error) {
 	items := []todoItem{}
 
-	db, _ := sql.Open("postgres", s.PsqlConn)
-	defer db.Close()
-
-	rows, err := db.Query(
+	rows, err := s.DB.Query(
 		fmt.Sprintf(`SELECT t.* FROM todo.task AS t JOIN todo.%s AS a ON a.task=t.id WHERE a.discord_user=$1`, table),
 		user,
 	)
@@ -191,11 +184,8 @@ func todosToEmbed(todos []todoItem, ctx *discord.MessageCreate) *discord.Message
 
 // Changes the items status from "from" to "to"
 func (s Todo) changeItemsStatus(userId string, itemIds []string, from, to string) error {
-	db, _ := sql.Open("postgres", s.PsqlConn)
-	defer db.Close()
-
 	// Check first if all IDs are valid
-	rows, err := db.Query(fmt.Sprintf(`SELECT task FROM todo.%s WHERE discord_user=$1 AND task = any($2)`, from),
+	rows, err := s.DB.Query(fmt.Sprintf(`SELECT task FROM todo.%s WHERE discord_user=$1 AND task = any($2)`, from),
 		userId,
 		pq.Array(itemIds),
 	)
@@ -225,7 +215,7 @@ func (s Todo) changeItemsStatus(userId string, itemIds []string, from, to string
 	}
 
 	// Delete active items
-	_, err = db.Exec(fmt.Sprintf(`DELETE FROM todo.%s WHERE discord_user=$1 AND task=any($2)`, from),
+	_, err = s.DB.Exec(fmt.Sprintf(`DELETE FROM todo.%s WHERE discord_user=$1 AND task=any($2)`, from),
 		userId,
 		pq.Array(itemIds),
 	)
@@ -235,7 +225,7 @@ func (s Todo) changeItemsStatus(userId string, itemIds []string, from, to string
 	}
 
 	// Put all items into completed
-	_, err = db.Exec(fmt.Sprintf(`INSERT INTO todo.%s (discord_user, task) VALUES ($1, UNNEST($2::INTEGER[]))`, to),
+	_, err = s.DB.Exec(fmt.Sprintf(`INSERT INTO todo.%s (discord_user, task) VALUES ($1, UNNEST($2::INTEGER[]))`, to),
 		userId,
 		pq.Array(itemIds),
 	)

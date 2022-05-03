@@ -53,7 +53,7 @@ func (s Todo) Help() string {
 }
 
 func (s Todo) Init(args ...interface{}) constants.Command {
-	s.PsqlConn = fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
+	connString := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
 		os.Getenv("DB_HOSTNAME"),
 		os.Getenv("DB_PORT"),
 		os.Getenv("POSTGRES_USER"),
@@ -62,13 +62,11 @@ func (s Todo) Init(args ...interface{}) constants.Command {
 	)
 
 	// Check if DB connection works
-	db, err := sql.Open("postgres", s.PsqlConn)
+	db, err := sql.Open("postgres", connString)
 	if err != nil {
 		fmt.Println("Error connecting to the database: ", err)
 		return &s
 	}
-
-	defer db.Close()
 
 	success := false
 	err = nil
@@ -84,12 +82,14 @@ func (s Todo) Init(args ...interface{}) constants.Command {
 
 	if !success {
 		fmt.Println("Error connecting to the database:", err)
-	}
+	} else {
+		s.DB = db
+		sx := (subcommands.Todo)(s)
+		err = sx.InitialiseSubscriptions()
+		if err != nil {
+			fmt.Println("Error initialising subscriptions: ", err)
+		}
 
-	sx := (subcommands.Todo)(s)
-	err = sx.InitialiseSubscriptions()
-	if err != nil {
-		fmt.Println("Error initialising subscriptions: ", err)
 	}
 
 	s.SelectedOptions = make(map[string][]string)
