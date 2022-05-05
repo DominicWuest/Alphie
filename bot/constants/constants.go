@@ -38,11 +38,11 @@ func InitialiseConstants(bot *discord.Session) {
 	// Parsing HOME_GUILD_ID
 	HomeGuildID = os.Getenv("HOME_GUILD")
 
-	LocalHomeGuild, err := bot.Guild(HomeGuildID)
+	localHomeGuild, err := bot.Guild(HomeGuildID)
 	if err != nil {
 		log.Fatalln(Red, "Couldn't get home guild:", err)
 	}
-	HomeGuild = LocalHomeGuild
+	HomeGuild = localHomeGuild
 
 	// Parsing AUTHORIZED_IDS
 	AuthorizedIDs = strings.Split(os.Getenv("AUTHORIZED_IDS"), ",")

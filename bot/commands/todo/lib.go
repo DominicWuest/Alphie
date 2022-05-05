@@ -68,7 +68,6 @@ func (s Todo) checkUserPresence(id string) {
 		`SELECT id FROM todo.discord_user WHERE id=$1`,
 		id,
 	)
-	defer rows.Close()
 	if !rows.Next() { // User not yet in DB
 		log.Println(constants.Blue, "Added new user with id", id, "to database")
 		s.DB.Exec(
@@ -185,7 +184,7 @@ func todosToEmbed(todos []todoItem, ctx *discord.MessageCreate) *discord.Message
 // Changes the items status from "from" to "to"
 func (s Todo) changeItemsStatus(userId string, itemIds []string, from, to string) error {
 	// Check first if all IDs are valid
-	rows, err := s.DB.Query(fmt.Sprintf(`SELECT task FROM todo.%s WHERE discord_user=$1 AND task = any($2)`, from),
+	rows, err := s.DB.Query(fmt.Sprintf(`SELECT task FROM todo.%s WHERE discord_user=$1 AND task = ANY($2)`, from),
 		userId,
 		pq.Array(itemIds),
 	)
@@ -215,7 +214,7 @@ func (s Todo) changeItemsStatus(userId string, itemIds []string, from, to string
 	}
 
 	// Delete active items
-	_, err = s.DB.Exec(fmt.Sprintf(`DELETE FROM todo.%s WHERE discord_user=$1 AND task=any($2)`, from),
+	_, err = s.DB.Exec(fmt.Sprintf(`DELETE FROM todo.%s WHERE discord_user=$1 AND task=ANY($2)`, from),
 		userId,
 		pq.Array(itemIds),
 	)
@@ -224,7 +223,7 @@ func (s Todo) changeItemsStatus(userId string, itemIds []string, from, to string
 		return err
 	}
 
-	// Put all items into completed
+	// Put all items into "to"
 	_, err = s.DB.Exec(fmt.Sprintf(`INSERT INTO todo.%s (discord_user, task) VALUES ($1, UNNEST($2::INTEGER[]))`, to),
 		userId,
 		pq.Array(itemIds),
