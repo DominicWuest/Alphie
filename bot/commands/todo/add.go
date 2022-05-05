@@ -7,7 +7,6 @@ import (
 	"github.com/DominicWuest/Alphie/constants"
 
 	discord "github.com/bwmarrin/discordgo"
-	_ "github.com/lib/pq"
 )
 
 func (s Todo) addHelp() string {

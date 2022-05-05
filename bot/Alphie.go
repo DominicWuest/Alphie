@@ -76,7 +76,6 @@ func ready(bot *discord.Session, event *discord.Ready) {
 }
 
 func messageCreate(bot *discord.Session, ctx *discord.MessageCreate) {
-
 	// Ignore our own messages
 	if ctx.Author.Bot {
 		return
