@@ -1,6 +1,7 @@
 package todo
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"strconv"
@@ -49,25 +50,34 @@ func (s Todo) Subscribe(bot *discord.Session, ctx *discord.MessageCreate, args [
 	if len(args) == 0 || len(args) == 1 && args[0] == "help" {
 		bot.ChannelMessageSend(ctx.ChannelID, s.subscribeHelp())
 	} else {
+		var err error
 		switch args[0] {
 		case "list":
-			s.subscriptionList(bot, ctx, args[1:])
+			err = s.subscriptionList(bot, ctx, args[1:])
 		case "add", "subscribe":
-			s.subscriptionAdd(bot, ctx, args[1:])
+			err = s.subscriptionAdd(bot, ctx, args[1:])
 		case "delete", "remove", "unsubscribe":
-			s.subscriptionDelete(bot, ctx, args[1:])
+			err = s.subscriptionDelete(bot, ctx, args[1:])
 		default:
 			bot.ChannelMessageSend(ctx.ChannelID, "Couldn't interpret command.\n"+s.subscribeHelp())
+			return
+		}
+		if err != nil {
+			bot.ChannelMessageSend(ctx.ChannelID, "Execution of command failed.")
 		}
 	}
 }
 
-func (s Todo) subscriptionList(bot *discord.Session, ctx *discord.MessageCreate, args []string) {
+func (s Todo) subscriptionList(bot *discord.Session, ctx *discord.MessageCreate, args []string) error {
 	bot.ChannelMessageDelete(ctx.ChannelID, ctx.Message.ID)
 	content := ctx.Author.Mention() + "'s subscriptions. Items in green are in your subscription list.\nAll schedules are displayed in the cronjob format.\n```bash\n"
 
 	// Fold the users subscription forest to make it more presentable
-	formattedItems := s.foldSubscriptionForest(s.getUserSubscriptionForest(ctx.Author.ID), func(acc []todoItem, curr subscriptionItemNode) []todoItem {
+	userForest, err := s.getUserSubscriptionForest(ctx.Author.ID)
+	if err != nil {
+		return err
+	}
+	formattedItems := s.foldSubscriptionForest(userForest, func(acc []todoItem, curr subscriptionItemNode) []todoItem {
 		rootItem := todoItem{
 			Title: curr.value.name,
 		}
@@ -92,13 +102,18 @@ func (s Todo) subscriptionList(bot *discord.Session, ctx *discord.MessageCreate,
 
 	content += "\n```"
 	bot.ChannelMessageSend(ctx.ChannelID, content)
+	return nil
 }
 
-func (s Todo) subscriptionAdd(bot *discord.Session, ctx *discord.MessageCreate, args []string) {
+func (s Todo) subscriptionAdd(bot *discord.Session, ctx *discord.MessageCreate, args []string) error {
 	bot.ChannelMessageDelete(ctx.ChannelID, ctx.Message.ID)
 
 	// Fold the users subscription forest to make it more presentable
-	listedItems := s.foldSubscriptionForest(s.getUserSubscriptionForest(ctx.Author.ID), func(acc []todoItem, curr subscriptionItemNode) []todoItem {
+	userForest, err := s.getUserSubscriptionForest(ctx.Author.ID)
+	if err != nil {
+		return err
+	}
+	listedItems := s.foldSubscriptionForest(userForest, func(acc []todoItem, curr subscriptionItemNode) []todoItem {
 		stringIndexes := []string{}
 		for _, index := range curr.nodeIndexes {
 			stringIndexes = append(stringIndexes, fmt.Sprint(index))
@@ -166,13 +181,18 @@ Items marked with `+constants.Emojis["success"]+" are already in your subscripti
 			bot.ChannelMessageDelete(ctx.ChannelID, msg.ID)
 		},
 	)
+	return nil
 }
 
-func (s Todo) subscriptionDelete(bot *discord.Session, ctx *discord.MessageCreate, args []string) {
+func (s Todo) subscriptionDelete(bot *discord.Session, ctx *discord.MessageCreate, args []string) error {
 	bot.ChannelMessageDelete(ctx.ChannelID, ctx.Message.ID)
 
 	// Fold the users subscription forest to make it more presentable
-	listedItems := s.foldSubscriptionForest(s.getUserSubscriptionForest(ctx.Author.ID), func(acc []todoItem, curr subscriptionItemNode) []todoItem {
+	userForest, err := s.getUserSubscriptionForest(ctx.Author.ID)
+	if err != nil {
+		return err
+	}
+	listedItems := s.foldSubscriptionForest(userForest, func(acc []todoItem, curr subscriptionItemNode) []todoItem {
 		stringIndexes := []string{}
 		for _, index := range curr.nodeIndexes {
 			stringIndexes = append(stringIndexes, fmt.Sprint(index))
@@ -243,6 +263,7 @@ If you unsubscribe from an item, you will automatically be unsubscribed from all
 			bot.ChannelMessageDelete(ctx.ChannelID, msg.ID)
 		},
 	)
+	return nil
 }
 
 // Parse all subscriptions and create their structs
@@ -251,8 +272,15 @@ func (s Todo) InitialiseSubscriptions() error {
 	// Initialise the subscription tree for listing subscriptions and
 	subscriptionForest = s.getSubscriptionForest()
 
+	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
+	defer cancel()
+
 	// Initialise all subscription cronjobs
-	rows, _ := s.DB.Query(`SELECT id, schedule, semester FROM todo.subscription`)
+	rows, err := s.DB.QueryContext(ctx, `SELECT id, schedule, semester FROM todo.subscription`)
+	if err != nil {
+		log.Println(constants.Red, "Couldn't get subscriptions", err)
+		return err
+	}
 
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
@@ -527,14 +555,21 @@ func (s Todo) initChildrenIndexes(node *subscriptionItemNode, indexes []int) {
 }
 
 // Returns the forest making up all subscriptions as todoItems, with items marked to which the user is subscribed to
-func (s Todo) getUserSubscriptionForest(userId string) []*subscriptionItemNode {
+func (s Todo) getUserSubscriptionForest(userId string) ([]*subscriptionItemNode, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
+	defer cancel()
+
 	// Get all items the user is subscribed to
-	rows, _ := s.DB.Query(
+	rows, err := s.DB.QueryContext(ctx,
 		`SELECT id, subscription_name FROM todo.subscription 
 		JOIN todo.subscribed_to ON id=subscription
 		WHERE discord_user=$1`,
 		userId,
 	)
+	if err != nil {
+		log.Println(constants.Red, "Couldn't get subscriptions of user ", userId, err)
+		return nil, err
+	}
 
 	subscriptions := []subscriptionItem{}
 	for rows.Next() {
@@ -555,7 +590,7 @@ func (s Todo) getUserSubscriptionForest(userId string) []*subscriptionItemNode {
 		forest = append(forest, tree)
 	}
 
-	return forest
+	return forest, nil
 }
 
 // Returns the tree rooted at the root as todoItems, with items marked to which the user is subscribed to

@@ -1,6 +1,7 @@
 package todo
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -99,6 +100,7 @@ func (s Todo) Delete(bot *discord.Session, ctx *discord.MessageCreate, args []st
 }
 
 // Deletes todo items from the user
+// Returns an InvalidIDError if invalid IDs were supplied
 func (s Todo) deleteItems(userId string, items []string) error {
 	userItems, err := s.getAllTodos(userId)
 	if err != nil {
@@ -120,18 +122,33 @@ func (s Todo) deleteItems(userId string, items []string) error {
 
 	// Check for wrong ID supplied
 	if len(itemsCopy) != 0 {
-		return fmt.Errorf("user %s has no task with id %s", userId, strings.Join(itemsCopy, ", "))
+		return &InvalidIDError{itemsCopy}
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
+	defer cancel()
+
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to initiate transaction while deleting items: %w", err)
 	}
 
 	// Delete items
 	for _, table := range []string{"active", "completed", "archived"} {
-		_, err = s.DB.Exec(fmt.Sprintf(`DELETE FROM todo.%s WHERE discord_user=$1 AND task=any($2)`, table),
+		_, err = tx.Exec(fmt.Sprintf(`DELETE FROM todo.%s WHERE discord_user=$1 AND task=any($2)`, table),
 			userId,
 			pq.Array(items),
 		)
 		if err != nil {
-			return err
+			if err1 := tx.Rollback(); err != nil {
+				return fmt.Errorf("failed to rollback changes for deleting items: %w", err1)
+			}
+			return fmt.Errorf("failed to delete items from %s while deleting items: %w", table, err)
 		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit changes while deleting items: %w", err)
 	}
 
 	return nil
