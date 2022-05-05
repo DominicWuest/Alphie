@@ -1,6 +1,8 @@
 package todo
 
 import (
+	"context"
+	"fmt"
 	"strings"
 	"time"
 
@@ -118,13 +120,23 @@ func (s Todo) addItemModalCreate(bot *discord.Session, interaction *discord.Inte
 }
 
 // Adds an active todo item
-func (s Todo) addItem(author, title, description string) {
-	taskId, _ := s.CreateTask(author, title, description)
+func (s Todo) addItem(author, title, description string) error {
+	taskId, err := s.CreateTask(author, title, description)
+	if err != nil {
+		return err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
+	defer cancel()
 
 	// Insert task into active
-	s.DB.Exec(
+	if _, err := s.DB.ExecContext(ctx,
 		`INSERT INTO todo.active (discord_user, task) VALUES ($1, $2)`,
 		author,
 		taskId,
-	)
+	); err != nil {
+		return fmt.Errorf("failed to add active todo item: %w", err)
+	}
+
+	return nil
 }

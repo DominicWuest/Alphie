@@ -1,6 +1,7 @@
 package todo
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"log"
@@ -28,8 +29,15 @@ type todoItem struct {
 
 const (
 	todoEmbedColor     = 0x0BEEF0
-	messageDeleteDelay = 5000 * time.Millisecond
+	messageDeleteDelay = 5 * time.Second
+	dbTimeout          = 5 * time.Second
 )
+
+type InvalidIDError struct {
+	InvalidIDs []string
+}
+
+func (e *InvalidIDError) Error() string { return strings.Join(e.InvalidIDs, " ") }
 
 // Parses IDs as they get passed to the command
 // Turn IDs into format id[,id]+
@@ -63,31 +71,43 @@ func deduplicate(arr []string) []string {
 }
 
 // Checks if a user is present in the database and inserts them if not
-func (s Todo) checkUserPresence(id string) {
-	rows, _ := s.DB.Query(
+func (s Todo) checkUserPresence(id string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
+	defer cancel()
+
+	rows, err := s.DB.QueryContext(ctx,
 		`SELECT id FROM todo.discord_user WHERE id=$1`,
 		id,
 	)
+	if err != nil {
+		return fmt.Errorf("failed to select user from DB while checking for presence: %w", err)
+	}
 	if !rows.Next() { // User not yet in DB
 		log.Println(constants.Blue, "Added new user with id", id, "to database")
-		s.DB.Exec(
+		if _, err = s.DB.ExecContext(ctx,
 			`INSERT INTO todo.discord_user(id) VALUES ($1)`,
 			id,
-		)
+		); err != nil {
+			return fmt.Errorf("failed to insert new user into DB: %w", err)
+		}
 	}
+	return nil
 }
 
+// Creates a new task and returns its id
 func (s Todo) CreateTask(author, title, description string) (int, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
+	defer cancel()
+
 	// Insert task into task table and get its ID
-	rows, err := s.DB.Query(
+	rows, err := s.DB.QueryContext(ctx,
 		`INSERT INTO todo.task (creator, title, description) VALUES ($1, $2, $3) RETURNING id`,
 		author,
 		title,
 		description,
 	)
 	if err != nil {
-		log.Println(constants.Red, "Couldn't create new task", err)
-		return 0, err
+		return 0, fmt.Errorf("failed to create new task: %w", err)
 	}
 
 	// Get the returned id
@@ -134,15 +154,17 @@ func (s Todo) getAllTodos(userId string) ([]todoItem, error) {
 
 // Returns an array of all TODOs of a user from the specified table
 func (s Todo) getUserTODOs(user, table string) ([]todoItem, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
+	defer cancel()
+
 	items := []todoItem{}
 
-	rows, err := s.DB.Query(
+	rows, err := s.DB.QueryContext(ctx,
 		fmt.Sprintf(`SELECT t.* FROM todo.task AS t JOIN todo.%s AS a ON a.task=t.id WHERE a.discord_user=$1`, table),
 		user,
 	)
 	if err != nil {
-		log.Println(constants.Red, "Couldn't get users TODOs", err, "User:", user, "Table:", table)
-		return nil, err
+		return nil, fmt.Errorf("failed to get users TODOs: %w", err)
 	}
 
 	for rows.Next() {
@@ -182,15 +204,23 @@ func todosToEmbed(todos []todoItem, ctx *discord.MessageCreate) *discord.Message
 }
 
 // Changes the items status from "from" to "to"
+// Returns an InvalidIDError if invalid IDs were supplied
 func (s Todo) changeItemsStatus(userId string, itemIds []string, from, to string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
+	defer cancel()
+
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to start transaction for changing items status: %w", err)
+	}
+
 	// Check first if all IDs are valid
-	rows, err := s.DB.Query(fmt.Sprintf(`SELECT task FROM todo.%s WHERE discord_user=$1 AND task = ANY($2)`, from),
+	rows, err := tx.Query(fmt.Sprintf(`SELECT task FROM todo.%s WHERE discord_user=$1 AND task = ANY($2)`, from),
 		userId,
 		pq.Array(itemIds),
 	)
 	if err != nil {
-		log.Println(constants.Red, "Couldn't change item status", err)
-		return err
+		return fmt.Errorf("failed to change item status: %w", err)
 	}
 
 	// For checking for invalid IDs
@@ -210,16 +240,19 @@ func (s Todo) changeItemsStatus(userId string, itemIds []string, from, to string
 
 	// Check for wrong ID supplied
 	if len(idsCopy) != 0 {
-		return fmt.Errorf("user %s has no active task with id %s", userId, strings.Join(idsCopy, ", "))
+		return &InvalidIDError{idsCopy}
 	}
 
 	// Delete active items
-	_, err = s.DB.Exec(fmt.Sprintf(`DELETE FROM todo.%s WHERE discord_user=$1 AND task=ANY($2)`, from),
+	_, err = tx.Exec(fmt.Sprintf(`DELETE FROM todo.%s WHERE discord_user=$1 AND task=ANY($2)`, from),
 		userId,
 		pq.Array(itemIds),
 	)
 	if err != nil {
 		log.Println(constants.Red, "Couldn't change item status", err)
+		if err1 := tx.Rollback(); err1 != nil {
+			return fmt.Errorf("failed to rollback changes for changing items status: %w", err1)
+		}
 		return err
 	}
 
@@ -229,12 +262,17 @@ func (s Todo) changeItemsStatus(userId string, itemIds []string, from, to string
 		pq.Array(itemIds),
 	)
 	if err != nil {
-		log.Println(constants.Red, "Couldn't change item status", err)
-		return err
+		if err1 := tx.Rollback(); err1 != nil {
+			return fmt.Errorf("failed to rollback changes for changing items status: %w", err1)
+		}
+		return fmt.Errorf("failed to insert items into new table in changeItemStatus: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit changes when changing items status: %w", err)
 	}
 
 	log.Printf("%s Changed users %s items %v from %s to %s\n", constants.Blue, userId, itemIds, from, to)
-
 	return nil
 }
 

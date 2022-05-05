@@ -1,6 +1,7 @@
 package todo
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -131,24 +132,42 @@ func (s Todo) archiveItems(userId string, items []string) error {
 		return fmt.Errorf("user %s has no active or completed task with id %s", userId, strings.Join(itemsCopy, ", "))
 	}
 
+	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
+	defer cancel()
+
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction for archiving items: %w", err)
+	}
+
 	// Delete items
 	for _, table := range []string{"active", "completed"} {
-		_, err = s.DB.Exec(fmt.Sprintf(`DELETE FROM todo.%s WHERE discord_user=$1 AND task=any($2)`, table),
+		_, err = tx.Exec(fmt.Sprintf(`DELETE FROM todo.%s WHERE discord_user=$1 AND task=any($2)`, table),
 			userId,
 			pq.Array(items),
 		)
 		if err != nil {
-			return err
+			if err1 := tx.Rollback(); err != nil {
+				return fmt.Errorf("failed to rollback changes for archiving items: %w", err1)
+			}
+			return fmt.Errorf("failed to delete items from %s while archiving items: %w", table, err)
 		}
 	}
 
 	// Put all items into archived
-	_, err = s.DB.Exec(`INSERT INTO todo.archived (discord_user, task) VALUES ($1, UNNEST($2::INTEGER[]))`,
+	_, err = tx.Exec(`INSERT INTO todo.archived (discord_user, task) VALUES ($1, UNNEST($2::INTEGER[]))`,
 		userId,
 		pq.Array(items),
 	)
 	if err != nil {
-		return err
+		if err1 := tx.Rollback(); err != nil {
+			return fmt.Errorf("failed to rollback changes for archiving items: %w", err1)
+		}
+		return fmt.Errorf("failed to insert task into todo.archived while archiving items: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit changes while archiving items: %w", err)
 	}
 
 	return nil
