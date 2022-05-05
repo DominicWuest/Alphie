@@ -209,13 +209,8 @@ func (s Todo) changeItemsStatus(userId string, itemIds []string, from, to string
 	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
 	defer cancel()
 
-	tx, err := s.DB.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("failed to start transaction for changing items status: %w", err)
-	}
-
 	// Check first if all IDs are valid
-	rows, err := tx.Query(fmt.Sprintf(`SELECT task FROM todo.%s WHERE discord_user=$1 AND task = ANY($2)`, from),
+	rows, err := s.DB.QueryContext(ctx, fmt.Sprintf(`SELECT task FROM todo.%s WHERE discord_user=$1 AND task = ANY($2)`, from),
 		userId,
 		pq.Array(itemIds),
 	)
@@ -241,6 +236,11 @@ func (s Todo) changeItemsStatus(userId string, itemIds []string, from, to string
 	// Check for wrong ID supplied
 	if len(idsCopy) != 0 {
 		return &InvalidIDError{idsCopy}
+	}
+
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to start transaction for changing items status: %w", err)
 	}
 
 	// Delete active items
