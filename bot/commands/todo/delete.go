@@ -3,11 +3,9 @@ package todo
 import (
 	"context"
 	"fmt"
-	"log"
 	"strings"
 	"time"
 
-	"github.com/DominicWuest/Alphie/constants"
 	discord "github.com/bwmarrin/discordgo"
 	"github.com/lib/pq"
 )
@@ -40,7 +38,7 @@ func (s Todo) Delete(bot *discord.Session, ctx *discord.MessageCreate, args []st
 			items,
 			ctx.Author.Mention()+", please mark which items you want to delete.",
 			"Items to delete",
-			func(items []string, msg *discord.Message) {
+			func(items []string, msg *discord.Message) error {
 				content := "Successfully deleted " + strings.Join(items, ", ") + "."
 				if len(items) == 0 {
 					content = "Didn't delete any items."
@@ -54,14 +52,14 @@ func (s Todo) Delete(bot *discord.Session, ctx *discord.MessageCreate, args []st
 				})
 
 				if err := s.deleteItems(ctx.Author.ID, items); err != nil {
-					log.Println(constants.Red, "failed to delete items: ", err)
-					return
+					return err
 				}
 
 				time.Sleep(messageDeleteDelay)
 				bot.ChannelMessageDelete(msg.ChannelID, msg.ID)
+				return nil
 			},
-			func(items []string, msg *discord.Message) {
+			func(items []string, msg *discord.Message) error {
 				content := "Cancelled"
 				bot.ChannelMessageEditComplex(&discord.MessageEdit{
 					Content:    &content,
@@ -72,6 +70,7 @@ func (s Todo) Delete(bot *discord.Session, ctx *discord.MessageCreate, args []st
 
 				time.Sleep(messageDeleteDelay)
 				bot.ChannelMessageDelete(ctx.ChannelID, msg.ID)
+				return nil
 			},
 		)
 	} else if len(args) == 1 && args[0] == "help" { // Send help message

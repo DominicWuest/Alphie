@@ -295,7 +295,7 @@ func (s Todo) changeItemsStatus(userId string, itemIds []string, from, to string
 // If the user presses the green button, submit gets called
 // If the user presses the red button, cancel gets called
 // Items has to be of non-zero length
-func (s *Todo) sendItemSelectMessage(bot *discord.Session, ctx *discord.MessageCreate, items []todoItem, content, placeholder string, submit, cancel func([]string, *discord.Message)) error {
+func (s *Todo) sendItemSelectMessage(bot *discord.Session, ctx *discord.MessageCreate, items []todoItem, content, placeholder string, submit, cancel func([]string, *discord.Message) error) error {
 	interactionId := "todo.select-item-message:" + ctx.Message.ID
 
 	if len(items) == 0 {
@@ -355,7 +355,7 @@ func (s *Todo) sendItemSelectMessage(bot *discord.Session, ctx *discord.MessageC
 	})
 
 	// Callback for select menu
-	constants.Handlers.MessageComponents[interactionId] = func(interaction *discord.Interaction) {
+	constants.Handlers.MessageComponents[interactionId] = func(interaction *discord.Interaction) error {
 		bot.InteractionRespond(interaction, &discord.InteractionResponse{
 			Type: discord.InteractionResponseDeferredMessageUpdate,
 		})
@@ -366,14 +366,15 @@ func (s *Todo) sendItemSelectMessage(bot *discord.Session, ctx *discord.MessageC
 		}
 
 		if user.ID != ctx.Author.ID {
-			return
+			return nil
 		}
 
 		s.SelectedOptions[interactionId] = interaction.MessageComponentData().Values
+		return nil
 	}
 
 	// Callback for submit button
-	constants.Handlers.MessageComponents["todo.select-item-message-submit:"+ctx.Message.ID] = func(interaction *discord.Interaction) {
+	constants.Handlers.MessageComponents["todo.select-item-message-submit:"+ctx.Message.ID] = func(interaction *discord.Interaction) error {
 		bot.InteractionRespond(interaction, &discord.InteractionResponse{
 			Type: discord.InteractionResponseDeferredMessageUpdate,
 		})
@@ -384,19 +385,21 @@ func (s *Todo) sendItemSelectMessage(bot *discord.Session, ctx *discord.MessageC
 		}
 
 		if user.ID != ctx.Author.ID {
-			return
+			return nil
 		}
 
-		go submit(s.SelectedOptions[interactionId], msg)
+		err := submit(s.SelectedOptions[interactionId], msg)
 
 		delete(s.SelectedOptions, interactionId)
 		delete(constants.Handlers.MessageComponents, interactionId)
 		delete(constants.Handlers.MessageComponents, "todo.done-message-submit:"+ctx.Message.ID)
 		delete(constants.Handlers.MessageComponents, "todo.done-message-cancel:"+ctx.Message.ID)
+
+		return err
 	}
 
 	// Callback for cancel button
-	constants.Handlers.MessageComponents["todo.select-item-message-cancel:"+ctx.Message.ID] = func(interaction *discord.Interaction) {
+	constants.Handlers.MessageComponents["todo.select-item-message-cancel:"+ctx.Message.ID] = func(interaction *discord.Interaction) error {
 		bot.InteractionRespond(interaction, &discord.InteractionResponse{
 			Type: discord.InteractionResponseDeferredMessageUpdate,
 		})
@@ -407,15 +410,17 @@ func (s *Todo) sendItemSelectMessage(bot *discord.Session, ctx *discord.MessageC
 		}
 
 		if user.ID != ctx.Author.ID {
-			return
+			return nil
 		}
 
-		go cancel(s.SelectedOptions[interactionId], msg)
+		err := cancel(s.SelectedOptions[interactionId], msg)
 
 		delete(s.SelectedOptions, interactionId)
 		delete(constants.Handlers.MessageComponents, interactionId)
 		delete(constants.Handlers.MessageComponents, "todo.done-message-submit:"+ctx.Message.ID)
 		delete(constants.Handlers.MessageComponents, "todo.done-message-cancel:"+ctx.Message.ID)
+
+		return err
 	}
 
 	return nil
