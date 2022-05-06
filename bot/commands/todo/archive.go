@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/DominicWuest/Alphie/constants"
 	discord "github.com/bwmarrin/discordgo"
 	"github.com/lib/pq"
 )
@@ -14,31 +15,31 @@ func (s Todo) archiveHelp() string {
 	return "Usage: `todo archive [id[,id..]]`\nAlternatively, call `todo archive` with no arguments to archive items in bulk without having to supply IDs."
 }
 
-func (s Todo) Archive(bot *discord.Session, ctx *discord.MessageCreate, args []string) {
-	s.checkUserPresence(ctx.Author.ID)
+func (s Todo) Archive(bot *discord.Session, ctx *discord.MessageCreate, args []string) error {
+	if err := s.checkUserPresence(ctx.Author.ID); err != nil {
+		return err
+	}
 	if len(args) == 0 { // Send message to archive items in bulk
 		actives, err1 := s.getActiveTodos(ctx.Author.ID)
+		if err1 != nil {
+			return err1
+		}
 		completed, err2 := s.getDoneTodos(ctx.Author.ID)
+		if err2 != nil {
+			return err2
+		}
 		items := append(actives, completed...)
-		if err1 != nil || err2 != nil {
-			msg, _ := bot.ChannelMessageSend(ctx.ChannelID, fmt.Sprint("Couldn't create message: ", err1, err2, "."))
-
-			time.Sleep(messageDeleteDelay)
-
-			bot.ChannelMessageDelete(ctx.ChannelID, msg.ID)
-			bot.ChannelMessageDelete(ctx.ChannelID, ctx.Message.ID)
-			return
-		} else if len(items) == 0 {
+		if len(items) == 0 {
 			msg, _ := bot.ChannelMessageSendReply(ctx.ChannelID, "You have no TODO items.", ctx.Reference())
 
 			time.Sleep(messageDeleteDelay)
 
 			bot.ChannelMessageDelete(ctx.ChannelID, msg.ID)
 			bot.ChannelMessageDelete(ctx.ChannelID, ctx.Message.ID)
-			return
+			return nil
 		}
 		bot.ChannelMessageDelete(ctx.ChannelID, ctx.Message.ID)
-		s.sendItemSelectMessage(
+		return s.sendItemSelectMessage(
 			bot,
 			ctx,
 			items,
@@ -57,7 +58,10 @@ func (s Todo) Archive(bot *discord.Session, ctx *discord.MessageCreate, args []s
 					Channel:    ctx.ChannelID,
 				})
 
-				s.archiveItems(ctx.Author.ID, items)
+				if err := s.archiveItems(ctx.Author.ID, items); err != nil {
+					fmt.Println(constants.Red, "failed to archive items: ", err)
+					return
+				}
 
 				time.Sleep(messageDeleteDelay)
 				bot.ChannelMessageDelete(msg.ChannelID, msg.ID)
@@ -85,23 +89,30 @@ func (s Todo) Archive(bot *discord.Session, ctx *discord.MessageCreate, args []s
 			time.Sleep(messageDeleteDelay)
 			bot.ChannelMessageDelete(ctx.ChannelID, ctx.Message.ID)
 			bot.ChannelMessageDelete(ctx.ChannelID, msg.ID)
-			return
+			return nil
 		}
 		if err = s.archiveItems(ctx.Author.ID, ids); err != nil {
-			msg, _ := bot.ChannelMessageSend(ctx.ChannelID, fmt.Sprint("Error archiving items: ", err)+".")
-			time.Sleep(messageDeleteDelay)
-			bot.ChannelMessageDelete(ctx.ChannelID, ctx.Message.ID)
-			bot.ChannelMessageDelete(ctx.ChannelID, msg.ID)
-			return
+			switch err.(type) {
+			case *InvalidIDError:
+				msg, _ := bot.ChannelMessageSend(ctx.ChannelID, fmt.Sprintf("You supplied an invalid ID: %v", err))
+				time.Sleep(messageDeleteDelay)
+				bot.ChannelMessageDelete(ctx.ChannelID, ctx.Message.ID)
+				bot.ChannelMessageDelete(ctx.ChannelID, msg.ID)
+				return nil
+			default:
+				return err
+			}
 		}
 		msg, _ := bot.ChannelMessageSend(ctx.ChannelID, "Successfully archived "+strings.Join(ids, ", ")+".")
 		time.Sleep(messageDeleteDelay)
 		bot.ChannelMessageDelete(ctx.ChannelID, ctx.Message.ID)
 		bot.ChannelMessageDelete(ctx.ChannelID, msg.ID)
 	}
+	return nil
 }
 
 // Archives active/completed items from the user
+// Returns an InvalidIDError if invalid IDs were supplied
 func (s Todo) archiveItems(userId string, items []string) error {
 	active, err := s.getActiveTodos(userId)
 	if err != nil {
@@ -129,7 +140,7 @@ func (s Todo) archiveItems(userId string, items []string) error {
 
 	// Check for wrong ID supplied
 	if len(itemsCopy) != 0 {
-		return fmt.Errorf("user %s has no active or completed task with id %s", userId, strings.Join(itemsCopy, ", "))
+		return &InvalidIDError{itemsCopy}
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
@@ -137,7 +148,7 @@ func (s Todo) archiveItems(userId string, items []string) error {
 
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("failed to begin transaction for archiving items: %w", err)
+		return err
 	}
 
 	// Delete items
@@ -148,9 +159,9 @@ func (s Todo) archiveItems(userId string, items []string) error {
 		)
 		if err != nil {
 			if err1 := tx.Rollback(); err != nil {
-				return fmt.Errorf("failed to rollback changes for archiving items: %w", err1)
+				return err1
 			}
-			return fmt.Errorf("failed to delete items from %s while archiving items: %w", table, err)
+			return err
 		}
 	}
 
@@ -161,13 +172,13 @@ func (s Todo) archiveItems(userId string, items []string) error {
 	)
 	if err != nil {
 		if err1 := tx.Rollback(); err != nil {
-			return fmt.Errorf("failed to rollback changes for archiving items: %w", err1)
+			return err1
 		}
-		return fmt.Errorf("failed to insert task into todo.archived while archiving items: %w", err)
+		return err
 	}
 
 	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("failed to commit changes while archiving items: %w", err)
+		return err
 	}
 
 	return nil

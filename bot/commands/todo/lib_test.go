@@ -84,23 +84,32 @@ func TestDeduplicate(t *testing.T) {
 }
 
 func TestCheckUserPresenceInDB(t *testing.T) {
+	dbMock.ExpectBegin()
+
 	dbMock.ExpectQuery(`SELECT id FROM todo.discord_user`).
 		WithArgs("0").
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow("0"))
 
-	mockTodo.checkUserPresence("0")
+	dbMock.ExpectCommit()
+
+	assert.Nil(t, mockTodo.checkUserPresence("0"))
 
 	assert.Nil(t, dbMock.ExpectationsWereMet())
 }
 
 func TestCheckUserPresenceNotInDB(t *testing.T) {
+	dbMock.ExpectBegin()
+
 	dbMock.ExpectQuery(`SELECT id FROM todo.discord_user`).
 		WithArgs("0").
 		WillReturnRows(sqlmock.NewRows([]string{"id"}))
 	dbMock.ExpectExec(`INSERT INTO todo.discord_user`).
-		WithArgs("0")
+		WithArgs("0").
+		WillReturnResult(sqlmock.NewResult(1, 1))
 
-	mockTodo.checkUserPresence("0")
+	dbMock.ExpectCommit()
+
+	assert.Nil(t, mockTodo.checkUserPresence("0"))
 
 	assert.Nil(t, dbMock.ExpectationsWereMet())
 }

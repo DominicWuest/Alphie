@@ -36,10 +36,10 @@ const dealingDelay = 250 * time.Millisecond
 const embedColor = 0xC27C0E
 
 // Starts a game of blackjack
-func (s *Blackjack) HandleCommand(bot *discord.Session, ctx *discord.MessageCreate, args []string) {
+func (s *Blackjack) HandleCommand(bot *discord.Session, ctx *discord.MessageCreate, args []string) error {
 	if len(args) != 1 {
 		bot.ChannelMessageSend(ctx.ChannelID, s.Help())
-		return
+		return nil
 	}
 
 	s.bot = bot
@@ -61,6 +61,7 @@ func (s *Blackjack) HandleCommand(bot *discord.Session, ctx *discord.MessageCrea
 		s.bot.ChannelMessageDelete(ctx.ChannelID, ctx.ID)
 		s.startNewGame(bot, ctx)
 	}
+	return nil
 }
 
 func (s Blackjack) Desc() string {

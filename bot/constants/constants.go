@@ -15,7 +15,7 @@ type HandlerStruct struct {
 
 // Interface for callable commands
 type Command interface {
-	HandleCommand(*discord.Session, *discord.MessageCreate, []string)
+	HandleCommand(*discord.Session, *discord.MessageCreate, []string) error
 	Desc() string
 	Help() string
 	Init(...interface{}) Command

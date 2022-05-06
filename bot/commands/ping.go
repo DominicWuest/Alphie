@@ -11,13 +11,15 @@ import (
 type Ping struct{}
 
 // Reply with Pong! and the latency of the bot in ms
-func (s *Ping) HandleCommand(bot *discord.Session, ctx *discord.MessageCreate, args []string) {
+func (s *Ping) HandleCommand(bot *discord.Session, ctx *discord.MessageCreate, args []string) error {
 	if len(args) == 1 {
 		message := fmt.Sprintf("Pong! `%dms` %s", int(bot.HeartbeatLatency().Milliseconds()), constants.Emojis["alph"])
 		bot.ChannelMessageSend(ctx.ChannelID, message)
 	} else {
 		bot.ChannelMessageSend(ctx.ChannelID, s.Help())
 	}
+
+	return nil
 }
 
 func (s Ping) Desc() string {
