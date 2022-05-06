@@ -137,7 +137,7 @@ func (s Todo) subscriptionAdd(bot *discord.Session, ctx *discord.MessageCreate, 
 If you choose one schedule, you will automatically be subscribed to all its children.
 Items marked with `+constants.Emojis["success"]+" are already in your subscription list.",
 		"Schedules to subscribe to",
-		func(items []string, msg *discord.Message) {
+		func(items []string, msg *discord.Message) error {
 
 			selectedSubscriptions := []string{}
 			for _, index := range items {
@@ -150,8 +150,7 @@ Items marked with `+constants.Emojis["success"]+" are already in your subscripti
 
 			newlySubscribed, err := s.addSubscriptions(ctx.Author.ID, selectedSubscriptions)
 			if err != nil {
-				log.Println(constants.Red, " failed to add subscription: ", err)
-				return
+				return err
 			}
 
 			content := "Successfully subscribed to " + strings.Join(newlySubscribed, ", ") + "."
@@ -170,8 +169,9 @@ Items marked with `+constants.Emojis["success"]+" are already in your subscripti
 
 			time.Sleep(messageDeleteDelay)
 			bot.ChannelMessageDelete(msg.ChannelID, msg.ID)
+			return nil
 		},
-		func(items []string, msg *discord.Message) {
+		func(items []string, msg *discord.Message) error {
 			content := "Cancelled"
 			bot.ChannelMessageEditComplex(&discord.MessageEdit{
 				Content:    &content,
@@ -182,6 +182,7 @@ Items marked with `+constants.Emojis["success"]+" are already in your subscripti
 
 			time.Sleep(messageDeleteDelay)
 			bot.ChannelMessageDelete(ctx.ChannelID, msg.ID)
+			return nil
 		},
 	)
 }
@@ -222,7 +223,7 @@ func (s Todo) subscriptionDelete(bot *discord.Session, ctx *discord.MessageCreat
 		ctx.Author.Mention()+`, which schedules to you want to unsubscribe from?
 If you unsubscribe from an item, you will automatically be unsubscribed from all its children too`,
 		"Schedules to unsubscribe from",
-		func(items []string, msg *discord.Message) {
+		func(items []string, msg *discord.Message) error {
 
 			selectedSubscriptions := []string{}
 			for _, index := range items {
@@ -235,7 +236,7 @@ If you unsubscribe from an item, you will automatically be unsubscribed from all
 
 			unsubscribed, err := s.deleteSubscriptions(ctx.Author.ID, selectedSubscriptions)
 			if err != nil {
-				log.Println(constants.Red, " failed to delete subscription: ", err)
+				return err
 			}
 
 			content := "Successfully unsubscribed from " + strings.Join(unsubscribed, ", ") + "."
@@ -254,8 +255,9 @@ If you unsubscribe from an item, you will automatically be unsubscribed from all
 
 			time.Sleep(messageDeleteDelay)
 			bot.ChannelMessageDelete(msg.ChannelID, msg.ID)
+			return nil
 		},
-		func(items []string, msg *discord.Message) {
+		func(items []string, msg *discord.Message) error {
 			content := "Cancelled"
 			bot.ChannelMessageEditComplex(&discord.MessageEdit{
 				Content:    &content,
@@ -266,6 +268,7 @@ If you unsubscribe from an item, you will automatically be unsubscribed from all
 
 			time.Sleep(messageDeleteDelay)
 			bot.ChannelMessageDelete(ctx.ChannelID, msg.ID)
+			return nil
 		},
 	)
 }

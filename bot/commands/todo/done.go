@@ -2,11 +2,9 @@ package todo
 
 import (
 	"fmt"
-	"log"
 	"strings"
 	"time"
 
-	"github.com/DominicWuest/Alphie/constants"
 	discord "github.com/bwmarrin/discordgo"
 	_ "github.com/lib/pq"
 )
@@ -38,10 +36,9 @@ func (s *Todo) Done(bot *discord.Session, ctx *discord.MessageCreate, args []str
 			items,
 			ctx.Author.Mention()+", please mark which items you completed.",
 			"Completed Items",
-			func(items []string, msg *discord.Message) {
+			func(items []string, msg *discord.Message) error {
 				if err := s.changeItemsStatus(ctx.Author.ID, items, "active", "completed"); err != nil {
-					log.Println(constants.Red, " failed to mark items as complete: ", err)
-					return
+					return err
 				}
 
 				content := "Successfully marked off " + strings.Join(items, ", ") + " as done."
@@ -58,8 +55,9 @@ func (s *Todo) Done(bot *discord.Session, ctx *discord.MessageCreate, args []str
 
 				time.Sleep(messageDeleteDelay)
 				bot.ChannelMessageDelete(msg.ChannelID, msg.ID)
+				return nil
 			},
-			func(items []string, msg *discord.Message) {
+			func(items []string, msg *discord.Message) error {
 				content := "Cancelled"
 				bot.ChannelMessageEditComplex(&discord.MessageEdit{
 					Content:    &content,
@@ -70,6 +68,7 @@ func (s *Todo) Done(bot *discord.Session, ctx *discord.MessageCreate, args []str
 
 				time.Sleep(messageDeleteDelay)
 				bot.ChannelMessageDelete(ctx.ChannelID, msg.ID)
+				return nil
 			},
 		)
 	} else if len(args) == 1 && args[0] == "help" { // Send help message

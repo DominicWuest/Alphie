@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/DominicWuest/Alphie/constants"
 	discord "github.com/bwmarrin/discordgo"
 	"github.com/lib/pq"
 )
@@ -45,7 +44,7 @@ func (s Todo) Archive(bot *discord.Session, ctx *discord.MessageCreate, args []s
 			items,
 			ctx.Author.Mention()+", please mark which items you want to archive.",
 			"Items to archive",
-			func(items []string, msg *discord.Message) {
+			func(items []string, msg *discord.Message) error {
 				content := "Successfully archived " + strings.Join(items, ", ") + "."
 				if len(items) == 0 {
 					content = "Didn't archive any items."
@@ -59,14 +58,14 @@ func (s Todo) Archive(bot *discord.Session, ctx *discord.MessageCreate, args []s
 				})
 
 				if err := s.archiveItems(ctx.Author.ID, items); err != nil {
-					fmt.Println(constants.Red, "failed to archive items: ", err)
-					return
+					return err
 				}
 
 				time.Sleep(messageDeleteDelay)
 				bot.ChannelMessageDelete(msg.ChannelID, msg.ID)
+				return nil
 			},
-			func(items []string, msg *discord.Message) {
+			func(items []string, msg *discord.Message) error {
 				content := "Cancelled"
 				bot.ChannelMessageEditComplex(&discord.MessageEdit{
 					Content:    &content,
@@ -77,6 +76,7 @@ func (s Todo) Archive(bot *discord.Session, ctx *discord.MessageCreate, args []s
 
 				time.Sleep(messageDeleteDelay)
 				bot.ChannelMessageDelete(ctx.ChannelID, msg.ID)
+				return nil
 			},
 		)
 	} else if len(args) == 1 && args[0] == "help" { // Send help message

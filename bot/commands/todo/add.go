@@ -2,7 +2,6 @@ package todo
 
 import (
 	"context"
-	"log"
 	"strings"
 	"time"
 
@@ -37,7 +36,7 @@ func (s Todo) Add(bot *discord.Session, ctx *discord.MessageCreate, args []strin
 				},
 			},
 		})
-		constants.Handlers.MessageComponents[interactionId] = func(interaction *discord.Interaction) {
+		constants.Handlers.MessageComponents[interactionId] = func(interaction *discord.Interaction) error {
 			user := interaction.User
 			if user == nil {
 				user = interaction.Member.User
@@ -47,6 +46,7 @@ func (s Todo) Add(bot *discord.Session, ctx *discord.MessageCreate, args []strin
 				bot.ChannelMessageDelete(msg.ChannelID, msg.ID)
 			}
 			s.addItemModalCreate(bot, interaction)
+			return nil
 		}
 	} else if len(args) == 1 && args[0] == "help" {
 		bot.ChannelMessageSend(ctx.ChannelID, s.addHelp())
@@ -104,7 +104,7 @@ func (s Todo) addItemModalCreate(bot *discord.Session, interaction *discord.Inte
 		},
 	})
 
-	constants.Handlers.ModalSubmit[interactionId] = func(interaction *discord.Interaction) {
+	constants.Handlers.ModalSubmit[interactionId] = func(interaction *discord.Interaction) error {
 		bot.InteractionRespond(interaction, &discord.InteractionResponse{
 			Type: discord.InteractionResponseDeferredMessageUpdate,
 		})
@@ -121,8 +121,9 @@ func (s Todo) addItemModalCreate(bot *discord.Session, interaction *discord.Inte
 		descRow := *interaction.ModalSubmitData().Components[1].(*discord.ActionsRow)
 		desc := (*descRow.Components[0].(*discord.TextInput)).Value
 		if err := s.addItem(user.ID, title, desc); err != nil {
-			log.Println(constants.Red, "Failed to add new item via modal: ", err)
+			return err
 		}
+		return nil
 	}
 }
 
