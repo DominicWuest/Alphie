@@ -84,23 +84,32 @@ func TestDeduplicate(t *testing.T) {
 }
 
 func TestCheckUserPresenceInDB(t *testing.T) {
+	dbMock.ExpectBegin()
+
 	dbMock.ExpectQuery(`SELECT id FROM todo.discord_user`).
 		WithArgs("0").
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow("0"))
 
-	mockTodo.checkUserPresence("0")
+	dbMock.ExpectCommit()
+
+	assert.Nil(t, mockTodo.checkUserPresence("0"))
 
 	assert.Nil(t, dbMock.ExpectationsWereMet())
 }
 
 func TestCheckUserPresenceNotInDB(t *testing.T) {
+	dbMock.ExpectBegin()
+
 	dbMock.ExpectQuery(`SELECT id FROM todo.discord_user`).
 		WithArgs("0").
 		WillReturnRows(sqlmock.NewRows([]string{"id"}))
 	dbMock.ExpectExec(`INSERT INTO todo.discord_user`).
-		WithArgs("0")
+		WithArgs("0").
+		WillReturnResult(sqlmock.NewResult(1, 1))
 
-	mockTodo.checkUserPresence("0")
+	dbMock.ExpectCommit()
+
+	assert.Nil(t, mockTodo.checkUserPresence("0"))
 
 	assert.Nil(t, dbMock.ExpectationsWereMet())
 }
@@ -148,6 +157,8 @@ func TestChangeItemStatus(t *testing.T) {
 		WithArgs("0", pq.Array([]string{"1", "2"})).
 		WillReturnRows(sqlmock.NewRows([]string{"task"}).AddRow("1").AddRow("2"))
 
+	dbMock.ExpectBegin()
+
 	dbMock.ExpectExec(`DELETE FROM todo.x`).
 		WithArgs("0", pq.Array([]string{"1", "2"})).
 		WillReturnResult(sqlmock.NewResult(1, 2))
@@ -156,19 +167,22 @@ func TestChangeItemStatus(t *testing.T) {
 		WithArgs("0", pq.Array([]string{"1", "2"})).
 		WillReturnResult(sqlmock.NewResult(1, 2))
 
+	dbMock.ExpectCommit()
+
 	err := mockTodo.changeItemsStatus("0", []string{"1", "2"}, "x", "y")
 
 	assert.Nil(t, err)
 }
 
 func TestChangeItemStatusWrongIDs(t *testing.T) {
+
 	dbMock.ExpectQuery(`SELECT task FROM todo.x`).
 		WithArgs("0", pq.Array([]string{"1", "2"})).
 		WillReturnRows(sqlmock.NewRows([]string{"task"}).AddRow("1"))
 
 	err := mockTodo.changeItemsStatus("0", []string{"1", "2"}, "x", "y")
 
-	assert.EqualError(t, err, "user 0 has no active task with id 2")
+	assert.IsType(t, &InvalidIDError{}, err)
 }
 
 func TestChangeItemStatusAllWrongIDs(t *testing.T) {
@@ -178,5 +192,5 @@ func TestChangeItemStatusAllWrongIDs(t *testing.T) {
 
 	err := mockTodo.changeItemsStatus("0", []string{"1", "2"}, "x", "y")
 
-	assert.EqualError(t, err, "user 0 has no active task with id 1, 2")
+	assert.IsType(t, &InvalidIDError{}, err)
 }

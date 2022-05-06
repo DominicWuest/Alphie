@@ -10,7 +10,7 @@ type Help struct {
 	Commands *map[string]constants.Command
 }
 
-func (s *Help) HandleCommand(bot *discord.Session, ctx *discord.MessageCreate, args []string) {
+func (s *Help) HandleCommand(bot *discord.Session, ctx *discord.MessageCreate, args []string) error {
 
 	embed := discord.MessageEmbed{
 		Author: &discord.MessageEmbedAuthor{
@@ -34,6 +34,7 @@ func (s *Help) HandleCommand(bot *discord.Session, ctx *discord.MessageCreate, a
 
 	bot.ChannelMessageSendEmbed(ctx.ChannelID, &embed)
 
+	return nil
 }
 
 func (s Help) Desc() string {

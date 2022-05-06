@@ -16,32 +16,33 @@ import (
 
 type Todo subcommands.Todo
 
-func (s *Todo) HandleCommand(bot *discord.Session, ctx *discord.MessageCreate, args []string) {
+func (s *Todo) HandleCommand(bot *discord.Session, ctx *discord.MessageCreate, args []string) error {
 	if len(args) == 1 {
 		bot.ChannelMessageSend(ctx.ChannelID, s.Help())
-		return
+		return nil
 	}
 	sx := (*subcommands.Todo)(s)
 
 	switch args[1] {
 	case "add": // Add a new item
-		sx.Add(bot, ctx, args[2:])
+		return sx.Add(bot, ctx, args[2:])
 	case "list": // List items
-		sx.List(bot, ctx, args[2:])
+		return sx.List(bot, ctx, args[2:])
 	case "done", "check":
-		sx.Done(bot, ctx, args[2:])
+		return sx.Done(bot, ctx, args[2:])
 	case "remove", "delete": // Removes an item
-		sx.Delete(bot, ctx, args[2:])
+		return sx.Delete(bot, ctx, args[2:])
 	case "subscribe", "subscription", "subscriptions", "schedule", "schedules": // Subscribes to a list or lists all possible ones
-		sx.Subscribe(bot, ctx, args[2:])
+		return sx.Subscribe(bot, ctx, args[2:])
 	case "archive": // Archives an item
-		sx.Archive(bot, ctx, args[2:])
+		return sx.Archive(bot, ctx, args[2:])
 	case "help":
 		bot.ChannelMessageSend(ctx.ChannelID, s.Help())
 		bot.ChannelMessageDelete(ctx.ChannelID, ctx.Message.ID)
 	default:
 		bot.ChannelMessageSend(ctx.ChannelID, "Couldn't interpret command\n"+s.Help())
 	}
+	return nil
 }
 
 func (s Todo) Desc() string {

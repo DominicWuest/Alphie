@@ -117,14 +117,21 @@ func messageCreate(bot *discord.Session, ctx *discord.MessageCreate) {
 	parsedCommand, found := COMMANDS[command[0]]
 	if found {
 		log.Println(constants.Yellow, ctx.Author.Username, "used command", ctx.Content)
-		parsedCommand.HandleCommand(bot, ctx, command)
+		// Call the command
+		go func() {
+			if err := parsedCommand.HandleCommand(bot, ctx, command); err != nil {
+				// If command failed
+				log.Println(constants.Red, "Error while calling ", command, " : ", err)
+				bot.ChannelMessageSend(ctx.ChannelID, "An unexpected error occurred while handling your command. Please try again later. If the issue persists, please contact my owner.")
+			}
+		}()
 	} else {
 		log.Println(constants.Yellow, ctx.Author.Username, "used unknown command", ctx.Content)
 	}
 }
 
 func interactionCreate(bot *discord.Session, interaction *discord.InteractionCreate) {
-	var handler (func(*discord.Interaction))
+	var handler (func(*discord.Interaction) error)
 	var found bool
 	switch interaction.Data.Type() {
 	case discord.InteractionMessageComponent:
@@ -138,7 +145,13 @@ func interactionCreate(bot *discord.Session, interaction *discord.InteractionCre
 	}
 
 	if found {
-		go handler(interaction.Interaction)
+		go func() {
+			if err := handler(interaction.Interaction); err != nil {
+				// If command failed
+				log.Println(constants.Red, "Error while handling interaction", interaction, " : ", err)
+				bot.ChannelMessageSend(interaction.ChannelID, "An unexpected error occurred while handling your interaction. Please try again later. If the issue persists, please contact my owner.")
+			}
+		}()
 	} else {
 		log.Println(constants.Red, "Interaction created but ID not found", interaction.ID)
 	}

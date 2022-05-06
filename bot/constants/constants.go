@@ -9,13 +9,13 @@ import (
 )
 
 type HandlerStruct struct {
-	MessageComponents map[string]func(*discord.Interaction) // Handlers for InteractionCreate events
-	ModalSubmit       map[string]func(*discord.Interaction) // Handlers for InteractionCreate events
+	MessageComponents map[string]func(*discord.Interaction) error // Handlers for InteractionCreate events
+	ModalSubmit       map[string]func(*discord.Interaction) error // Handlers for InteractionCreate events
 }
 
 // Interface for callable commands
 type Command interface {
-	HandleCommand(*discord.Session, *discord.MessageCreate, []string)
+	HandleCommand(*discord.Session, *discord.MessageCreate, []string) error
 	Desc() string
 	Help() string
 	Init(...interface{}) Command
@@ -67,7 +67,7 @@ func InitialiseConstants(bot *discord.Session) {
 	}
 
 	Handlers = HandlerStruct{
-		make(map[string]func(*discord.Interaction)),
-		make(map[string]func(*discord.Interaction)),
+		make(map[string]func(*discord.Interaction) error),
+		make(map[string]func(*discord.Interaction) error),
 	}
 }

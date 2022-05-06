@@ -36,10 +36,10 @@ const dealingDelay = 250 * time.Millisecond
 const embedColor = 0xC27C0E
 
 // Starts a game of blackjack
-func (s *Blackjack) HandleCommand(bot *discord.Session, ctx *discord.MessageCreate, args []string) {
+func (s *Blackjack) HandleCommand(bot *discord.Session, ctx *discord.MessageCreate, args []string) error {
 	if len(args) != 1 {
 		bot.ChannelMessageSend(ctx.ChannelID, s.Help())
-		return
+		return nil
 	}
 
 	s.bot = bot
@@ -61,6 +61,7 @@ func (s *Blackjack) HandleCommand(bot *discord.Session, ctx *discord.MessageCrea
 		s.bot.ChannelMessageDelete(ctx.ChannelID, ctx.ID)
 		s.startNewGame(bot, ctx)
 	}
+	return nil
 }
 
 func (s Blackjack) Desc() string {
@@ -277,7 +278,7 @@ func (s *Blackjack) deal(player bool) {
 	*totals = newTotals
 }
 
-func (s *Blackjack) handleHit(interaction *discord.Interaction) {
+func (s *Blackjack) handleHit(interaction *discord.Interaction) error {
 	// ACK interaction
 	s.bot.InteractionRespond(interaction, &discord.InteractionResponse{
 		Type: discord.InteractionResponseDeferredMessageUpdate,
@@ -289,7 +290,7 @@ func (s *Blackjack) handleHit(interaction *discord.Interaction) {
 	}
 
 	if s.state != waiting || s.player.ID != user.ID {
-		return
+		return nil
 	}
 
 	s.bot.Lock()
@@ -309,19 +310,21 @@ func (s *Blackjack) handleHit(interaction *discord.Interaction) {
 		for _, tot := range s.playerTotals { // Check if player won
 			if tot == 21 {
 				s.endGame(true)
-				return
+				return nil
 			}
 		}
 	} else { // Player lost
 		s.endGame(false)
-		return
+		return nil
 	}
 	s.state = waiting
 	embed = s.genEmbed(0)
 	s.bot.ChannelMessageEditEmbed(s.message.ChannelID, s.message.ID, &embed)
+
+	return nil
 }
 
-func (s *Blackjack) handleStand(interaction *discord.Interaction) {
+func (s *Blackjack) handleStand(interaction *discord.Interaction) error {
 	// ACK interaction
 	s.bot.InteractionRespond(interaction, &discord.InteractionResponse{
 		Type: discord.InteractionResponseDeferredMessageUpdate,
@@ -333,7 +336,7 @@ func (s *Blackjack) handleStand(interaction *discord.Interaction) {
 	}
 
 	if s.state != waiting || s.player.ID != user.ID {
-		return
+		return nil
 	}
 
 	s.bot.Lock()
@@ -353,9 +356,10 @@ func (s *Blackjack) handleStand(interaction *discord.Interaction) {
 	} else { // Player lost
 		s.endGame(false)
 	}
+	return nil
 }
 
-func (s *Blackjack) handleExit(interaction *discord.Interaction) {
+func (s *Blackjack) handleExit(interaction *discord.Interaction) error {
 	// ACK interaction
 	s.bot.InteractionRespond(interaction, &discord.InteractionResponse{
 		Type: discord.InteractionResponseDeferredMessageUpdate,
@@ -367,7 +371,7 @@ func (s *Blackjack) handleExit(interaction *discord.Interaction) {
 	}
 
 	if s.player.ID != user.ID {
-		return
+		return nil
 	}
 
 	s.bot.Lock()
@@ -379,9 +383,11 @@ func (s *Blackjack) handleExit(interaction *discord.Interaction) {
 	delete(constants.Handlers.MessageComponents, "blackjack_restart")
 
 	s.exit()
+
+	return nil
 }
 
-func (s *Blackjack) handleRestart(interaction *discord.Interaction) {
+func (s *Blackjack) handleRestart(interaction *discord.Interaction) error {
 	// ACK interaction
 	s.bot.InteractionRespond(interaction, &discord.InteractionResponse{
 		Type: discord.InteractionResponseDeferredMessageUpdate,
@@ -393,7 +399,7 @@ func (s *Blackjack) handleRestart(interaction *discord.Interaction) {
 	}
 
 	if s.player.ID != user.ID {
-		return
+		return nil
 	}
 
 	s.bot.Lock()
@@ -402,6 +408,8 @@ func (s *Blackjack) handleRestart(interaction *discord.Interaction) {
 	delete(constants.Handlers.MessageComponents, "blackjack_restart")
 
 	s.startNewGame(s.bot, s.ctx)
+
+	return nil
 }
 
 func (s *Blackjack) endGame(playerWinner bool) {
