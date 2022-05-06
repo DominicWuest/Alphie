@@ -1,8 +1,11 @@
-FROM golang:1.18
-WORKDIR /usr/src/app
+FROM golang:1.18-alpine3.15 AS builder
+WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-CMD ["go", "run", "Alphie.go"]
+RUN go build -o /Alphie
 
-# TODO: Builder + Production for Kubernetes
+FROM alpine:latest AS deployment
+WORKDIR /usr/src/app
+COPY --from=builder /Alphie .
+CMD ./Alphie
