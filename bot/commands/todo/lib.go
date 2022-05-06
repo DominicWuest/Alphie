@@ -75,21 +75,36 @@ func (s Todo) checkUserPresence(id string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
 	defer cancel()
 
-	rows, err := s.DB.QueryContext(ctx,
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+
+	rows, err := tx.Query(
 		`SELECT id FROM todo.discord_user WHERE id=$1`,
 		id,
 	)
 	if err != nil {
-		return fmt.Errorf("failed to select user from DB while checking for presence: %w", err)
+		if err1 := tx.Rollback(); err1 != nil {
+			return err1
+		}
+		return err
 	}
 	if !rows.Next() { // User not yet in DB
 		log.Println(constants.Blue, "Added new user with id", id, "to database")
-		if _, err = s.DB.ExecContext(ctx,
+		if _, err = tx.Exec(
 			`INSERT INTO todo.discord_user(id) VALUES ($1)`,
 			id,
 		); err != nil {
-			return fmt.Errorf("failed to insert new user into DB: %w", err)
+			if err1 := tx.Rollback(); err1 != nil {
+				return err1
+			}
+			return err
 		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return err
 	}
 	return nil
 }
@@ -107,7 +122,7 @@ func (s Todo) CreateTask(author, title, description string) (int, error) {
 		description,
 	)
 	if err != nil {
-		return 0, fmt.Errorf("failed to create new task: %w", err)
+		return 0, err
 	}
 
 	// Get the returned id
@@ -164,7 +179,7 @@ func (s Todo) getUserTODOs(user, table string) ([]todoItem, error) {
 		user,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get users TODOs: %w", err)
+		return nil, err
 	}
 
 	for rows.Next() {
@@ -215,7 +230,7 @@ func (s Todo) changeItemsStatus(userId string, itemIds []string, from, to string
 		pq.Array(itemIds),
 	)
 	if err != nil {
-		return fmt.Errorf("failed to change item status: %w", err)
+		return err
 	}
 
 	// For checking for invalid IDs
@@ -240,7 +255,7 @@ func (s Todo) changeItemsStatus(userId string, itemIds []string, from, to string
 
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("failed to start transaction for changing items status: %w", err)
+		return err
 	}
 
 	// Delete active items
@@ -251,7 +266,7 @@ func (s Todo) changeItemsStatus(userId string, itemIds []string, from, to string
 	if err != nil {
 		log.Println(constants.Red, "Couldn't change item status", err)
 		if err1 := tx.Rollback(); err1 != nil {
-			return fmt.Errorf("failed to rollback changes for changing items status: %w", err1)
+			return err1
 		}
 		return err
 	}
@@ -263,13 +278,13 @@ func (s Todo) changeItemsStatus(userId string, itemIds []string, from, to string
 	)
 	if err != nil {
 		if err1 := tx.Rollback(); err1 != nil {
-			return fmt.Errorf("failed to rollback changes for changing items status: %w", err1)
+			return err1
 		}
-		return fmt.Errorf("failed to insert items into new table in changeItemStatus: %w", err)
+		return err
 	}
 
 	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("failed to commit changes when changing items status: %w", err)
+		return err
 	}
 
 	log.Printf("%s Changed users %s items %v from %s to %s\n", constants.Blue, userId, itemIds, from, to)

@@ -3,9 +3,11 @@ package todo
 import (
 	"context"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
+	"github.com/DominicWuest/Alphie/constants"
 	discord "github.com/bwmarrin/discordgo"
 	"github.com/lib/pq"
 )
@@ -14,18 +16,14 @@ func (s Todo) deleteHelp() string {
 	return "Usage: `todo delete [id[,id..]]`\nAlternatively, call `todo delete` with no arguments to delete items in bulk without having to supply IDs."
 }
 
-func (s Todo) Delete(bot *discord.Session, ctx *discord.MessageCreate, args []string) {
-	s.checkUserPresence(ctx.Author.ID)
+func (s Todo) Delete(bot *discord.Session, ctx *discord.MessageCreate, args []string) error {
+	if err := s.checkUserPresence(ctx.Author.ID); err != nil {
+		return err
+	}
 	if len(args) == 0 { // Send message to delete items in bulk
 		items, err := s.getAllTodos(ctx.Author.ID)
 		if err != nil {
-			msg, _ := bot.ChannelMessageSend(ctx.ChannelID, fmt.Sprint("Couldn't create message: ", err, "."))
-
-			time.Sleep(messageDeleteDelay)
-
-			bot.ChannelMessageDelete(ctx.ChannelID, msg.ID)
-			bot.ChannelMessageDelete(ctx.ChannelID, ctx.Message.ID)
-			return
+			return err
 		} else if len(items) == 0 {
 			msg, _ := bot.ChannelMessageSendReply(ctx.ChannelID, "You have no TODO items.", ctx.Reference())
 
@@ -33,10 +31,10 @@ func (s Todo) Delete(bot *discord.Session, ctx *discord.MessageCreate, args []st
 
 			bot.ChannelMessageDelete(ctx.ChannelID, msg.ID)
 			bot.ChannelMessageDelete(ctx.ChannelID, ctx.Message.ID)
-			return
+			return nil
 		}
 		bot.ChannelMessageDelete(ctx.ChannelID, ctx.Message.ID)
-		s.sendItemSelectMessage(
+		return s.sendItemSelectMessage(
 			bot,
 			ctx,
 			items,
@@ -55,7 +53,10 @@ func (s Todo) Delete(bot *discord.Session, ctx *discord.MessageCreate, args []st
 					Channel:    ctx.ChannelID,
 				})
 
-				s.deleteItems(ctx.Author.ID, items)
+				if err := s.deleteItems(ctx.Author.ID, items); err != nil {
+					log.Println(constants.Red, "failed to delete items: ", err)
+					return
+				}
 
 				time.Sleep(messageDeleteDelay)
 				bot.ChannelMessageDelete(msg.ChannelID, msg.ID)
@@ -83,20 +84,26 @@ func (s Todo) Delete(bot *discord.Session, ctx *discord.MessageCreate, args []st
 			time.Sleep(messageDeleteDelay)
 			bot.ChannelMessageDelete(ctx.ChannelID, ctx.Message.ID)
 			bot.ChannelMessageDelete(ctx.ChannelID, msg.ID)
-			return
+			return nil
 		}
 		if err = s.deleteItems(ctx.Author.ID, ids); err != nil {
-			msg, _ := bot.ChannelMessageSend(ctx.ChannelID, fmt.Sprint("Error deleting items: ", err))
-			time.Sleep(messageDeleteDelay)
-			bot.ChannelMessageDelete(ctx.ChannelID, ctx.Message.ID)
-			bot.ChannelMessageDelete(ctx.ChannelID, msg.ID)
-			return
+			switch err.(type) {
+			case *InvalidIDError:
+				msg, _ := bot.ChannelMessageSend(ctx.ChannelID, fmt.Sprintf("You supplied an invalid ID: %v", err))
+				time.Sleep(messageDeleteDelay)
+				bot.ChannelMessageDelete(ctx.ChannelID, ctx.Message.ID)
+				bot.ChannelMessageDelete(ctx.ChannelID, msg.ID)
+				return nil
+			default:
+				return err
+			}
 		}
 		msg, _ := bot.ChannelMessageSend(ctx.ChannelID, "Successfully deleted "+strings.Join(ids, ", "))
 		time.Sleep(messageDeleteDelay)
 		bot.ChannelMessageDelete(ctx.ChannelID, ctx.Message.ID)
 		bot.ChannelMessageDelete(ctx.ChannelID, msg.ID)
 	}
+	return nil
 }
 
 // Deletes todo items from the user
@@ -130,7 +137,7 @@ func (s Todo) deleteItems(userId string, items []string) error {
 
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("failed to initiate transaction while deleting items: %w", err)
+		return err
 	}
 
 	// Delete items
@@ -141,9 +148,9 @@ func (s Todo) deleteItems(userId string, items []string) error {
 		)
 		if err != nil {
 			if err1 := tx.Rollback(); err != nil {
-				return fmt.Errorf("failed to rollback changes for deleting items: %w", err1)
+				return err1
 			}
-			return fmt.Errorf("failed to delete items from %s while deleting items: %w", table, err)
+			return err
 		}
 	}
 

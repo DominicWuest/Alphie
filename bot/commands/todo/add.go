@@ -2,7 +2,7 @@ package todo
 
 import (
 	"context"
-	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -15,8 +15,10 @@ func (s Todo) addHelp() string {
 	return "Call the `todo add` command with no arguments to add a new TODO item.\nAlternatively, you can use the command `todo add x1` to add an item with a title of `x1`."
 }
 
-func (s Todo) Add(bot *discord.Session, ctx *discord.MessageCreate, args []string) {
-	s.checkUserPresence(ctx.Author.ID)
+func (s Todo) Add(bot *discord.Session, ctx *discord.MessageCreate, args []string) error {
+	if err := s.checkUserPresence(ctx.Author.ID); err != nil {
+		return err
+	}
 	bot.ChannelMessageDelete(ctx.ChannelID, ctx.Message.ID)
 	if len(args) == 0 {
 		interactionId := "todo.add-button:" + ctx.Message.ID
@@ -49,7 +51,9 @@ func (s Todo) Add(bot *discord.Session, ctx *discord.MessageCreate, args []strin
 	} else if len(args) == 1 && args[0] == "help" {
 		bot.ChannelMessageSend(ctx.ChannelID, s.addHelp())
 	} else { // Add new item with title
-		s.addItem(ctx.Author.ID, strings.Join(args, " "), "")
+		if err := s.addItem(ctx.Author.ID, strings.Join(args, " "), ""); err != nil {
+			return err
+		}
 		msg, _ := bot.ChannelMessageSendComplex(ctx.ChannelID, &discord.MessageSend{
 			Content: "Successfully added item(s) with title " + strings.Join(args, " ") + ".",
 			AllowedMentions: &discord.MessageAllowedMentions{
@@ -59,6 +63,7 @@ func (s Todo) Add(bot *discord.Session, ctx *discord.MessageCreate, args []strin
 		time.Sleep(messageDeleteDelay)
 		bot.ChannelMessageDelete(msg.ChannelID, msg.ID)
 	}
+	return nil
 }
 
 // Responds to an interaction with the modal for a user to add an item
@@ -115,7 +120,9 @@ func (s Todo) addItemModalCreate(bot *discord.Session, interaction *discord.Inte
 		// Get description
 		descRow := *interaction.ModalSubmitData().Components[1].(*discord.ActionsRow)
 		desc := (*descRow.Components[0].(*discord.TextInput)).Value
-		s.addItem(user.ID, title, desc)
+		if err := s.addItem(user.ID, title, desc); err != nil {
+			log.Println(constants.Red, "Failed to add new item via modal: ", err)
+		}
 	}
 }
 
@@ -135,7 +142,7 @@ func (s Todo) addItem(author, title, description string) error {
 		author,
 		taskId,
 	); err != nil {
-		return fmt.Errorf("failed to add active todo item: %w", err)
+		return err
 	}
 
 	return nil

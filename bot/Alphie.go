@@ -117,7 +117,12 @@ func messageCreate(bot *discord.Session, ctx *discord.MessageCreate) {
 	parsedCommand, found := COMMANDS[command[0]]
 	if found {
 		log.Println(constants.Yellow, ctx.Author.Username, "used command", ctx.Content)
-		parsedCommand.HandleCommand(bot, ctx, command)
+		// Call the command
+		if err := parsedCommand.HandleCommand(bot, ctx, command); err != nil {
+			// If command failed
+			log.Println(constants.Red, "Error while calling ", command, " : ", err)
+			bot.ChannelMessageSend(ctx.ChannelID, "An unexpected error occurred. Please try again later. If the issue persists, please contact my owner.")
+		}
 	} else {
 		log.Println(constants.Yellow, ctx.Author.Username, "used unknown command", ctx.Content)
 	}

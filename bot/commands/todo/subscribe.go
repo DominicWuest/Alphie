@@ -45,27 +45,26 @@ func (s Todo) subscribeHelp() string {
 	return "Usage: `todo subscribe [list|add|delete]`"
 }
 
-func (s Todo) Subscribe(bot *discord.Session, ctx *discord.MessageCreate, args []string) {
-	s.checkUserPresence(ctx.Author.ID)
+func (s Todo) Subscribe(bot *discord.Session, ctx *discord.MessageCreate, args []string) error {
+	if err := s.checkUserPresence(ctx.Author.ID); err != nil {
+		return err
+	}
 	if len(args) == 0 || len(args) == 1 && args[0] == "help" {
 		bot.ChannelMessageSend(ctx.ChannelID, s.subscribeHelp())
 	} else {
-		var err error
 		switch args[0] {
 		case "list":
-			err = s.subscriptionList(bot, ctx, args[1:])
+			return s.subscriptionList(bot, ctx, args[1:])
 		case "add", "subscribe":
-			err = s.subscriptionAdd(bot, ctx, args[1:])
+			return s.subscriptionAdd(bot, ctx, args[1:])
 		case "delete", "remove", "unsubscribe":
-			err = s.subscriptionDelete(bot, ctx, args[1:])
+			return s.subscriptionDelete(bot, ctx, args[1:])
 		default:
 			bot.ChannelMessageSend(ctx.ChannelID, "Couldn't interpret command.\n"+s.subscribeHelp())
-			return
-		}
-		if err != nil {
-			bot.ChannelMessageSend(ctx.ChannelID, "Execution of command failed.")
+			return nil
 		}
 	}
+	return nil
 }
 
 func (s Todo) subscriptionList(bot *discord.Session, ctx *discord.MessageCreate, args []string) error {
@@ -130,7 +129,7 @@ func (s Todo) subscriptionAdd(bot *discord.Session, ctx *discord.MessageCreate, 
 
 		return append(acc, rootItem)
 	})
-	s.sendItemSelectMessage(
+	return s.sendItemSelectMessage(
 		bot,
 		ctx,
 		listedItems,
@@ -149,7 +148,11 @@ Items marked with `+constants.Emojis["success"]+" are already in your subscripti
 				selectedSubscriptions = append(selectedSubscriptions, split[len(split)-1])
 			}
 
-			newlySubscribed := s.addSubscriptions(ctx.Author.ID, selectedSubscriptions)
+			newlySubscribed, err := s.addSubscriptions(ctx.Author.ID, selectedSubscriptions)
+			if err != nil {
+				log.Println(constants.Red, " failed to add subscription: ", err)
+				return
+			}
 
 			content := "Successfully subscribed to " + strings.Join(newlySubscribed, ", ") + "."
 			if len(newlySubscribed) == 0 {
@@ -181,7 +184,6 @@ Items marked with `+constants.Emojis["success"]+" are already in your subscripti
 			bot.ChannelMessageDelete(ctx.ChannelID, msg.ID)
 		},
 	)
-	return nil
 }
 
 func (s Todo) subscriptionDelete(bot *discord.Session, ctx *discord.MessageCreate, args []string) error {
@@ -213,7 +215,7 @@ func (s Todo) subscriptionDelete(bot *discord.Session, ctx *discord.MessageCreat
 		bot.ChannelMessageSend(ctx.ChannelID, ctx.Author.Mention()+" doesn't have any active subscriptions.")
 	}
 
-	s.sendItemSelectMessage(
+	return s.sendItemSelectMessage(
 		bot,
 		ctx,
 		listedItems,
@@ -231,7 +233,10 @@ If you unsubscribe from an item, you will automatically be unsubscribed from all
 				selectedSubscriptions = append(selectedSubscriptions, split[len(split)-1])
 			}
 
-			unsubscribed := s.deleteSubscriptions(ctx.Author.ID, selectedSubscriptions)
+			unsubscribed, err := s.deleteSubscriptions(ctx.Author.ID, selectedSubscriptions)
+			if err != nil {
+				log.Println(constants.Red, " failed to delete subscription: ", err)
+			}
 
 			content := "Successfully unsubscribed from " + strings.Join(unsubscribed, ", ") + "."
 			if len(unsubscribed) == 0 {
@@ -263,14 +268,17 @@ If you unsubscribe from an item, you will automatically be unsubscribed from all
 			bot.ChannelMessageDelete(ctx.ChannelID, msg.ID)
 		},
 	)
-	return nil
 }
 
 // Parse all subscriptions and create their structs
 func (s Todo) InitialiseSubscriptions() error {
 
 	// Initialise the subscription tree for listing subscriptions and
-	subscriptionForest = s.getSubscriptionForest()
+	subscriptionForestLocal, err := s.getSubscriptionForest()
+	if err != nil {
+		return err
+	}
+	subscriptionForest = subscriptionForestLocal
 
 	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
 	defer cancel()
@@ -311,7 +319,9 @@ func (s Todo) InitialiseSubscriptions() error {
 					(calendarWeek < fallSemesterStart || calendarWeek > fallSemesterEnd) {
 					return
 				}
-				s.createSubscriptionItem(id)
+				if err := s.createSubscriptionItem(id); err != nil {
+					log.Println(constants.Red, "failed to create subscription item: ", err)
+				}
 			}))
 		}
 	}
@@ -321,53 +331,94 @@ func (s Todo) InitialiseSubscriptions() error {
 }
 
 // Adds the subscriptions to the user with id userId and returns newly added subscriptions
-func (s Todo) addSubscriptions(userId string, items []string) []string {
+func (s Todo) addSubscriptions(userId string, items []string) ([]string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
+	defer cancel()
+
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+
 	added := []string{}
 	// Check if the user is subscribed to any ancestors
 	for _, subscription := range items {
-		ancestors := s.getAncestors(subscription)
-		rows, _ := s.DB.Query(`SELECT * FROM todo.subscribed_to WHERE discord_user=$1	AND subscription=ANY($2)`,
+		ancestors, err := s.getAncestors(subscription)
+		if err != nil {
+			return nil, err
+		}
+		rows, err := tx.Query(`SELECT * FROM todo.subscribed_to WHERE discord_user=$1 AND subscription=ANY($2)`,
 			userId,
 			pq.Array(ancestors),
 		)
+		if err != nil {
+			if err1 := tx.Rollback(); err1 != nil {
+				return nil, err1
+			}
+			return nil, err
+		}
 		// User isn't subscribed to any ancestors
 		if !rows.Next() {
 			// Get all subscription children
 			children := []string{}
-			layer := s.getChildren(subscription)
+			layer, err := s.getChildren(subscription)
+			if err != nil {
+				return nil, err
+			}
 			for len(layer) != 0 {
 				temp := []*subscriptionItemNode{}
 				for _, child := range layer {
-					temp = append(temp, s.getChildren(child.value.id)...)
+					childChildren, err := s.getChildren(child.value.id)
+					if err != nil {
+						return nil, err
+					}
+					temp = append(temp, childChildren...)
 					children = append(children, child.value.id)
 				}
 				layer = temp
 			}
 			// Delete all subscription children
-			s.DB.Exec(`DELETE FROM todo.subscribed_to WHERE discord_user=$1 AND subscription=ANY($2)`,
+			if _, err = s.DB.Exec(`DELETE FROM todo.subscribed_to WHERE discord_user=$1 AND subscription=ANY($2)`,
 				userId,
 				pq.Array(children),
-			)
+			); err != nil {
+				if err1 := tx.Rollback(); err1 != nil {
+					return nil, err1
+				}
+				return nil, err
+			}
 
 			// Add subscription
 			added = append(added, subscription)
-			s.DB.Exec(`INSERT INTO todo.subscribed_to (discord_user, subscription) VALUES ($1, $2)`,
+			if _, err = s.DB.Exec(`INSERT INTO todo.subscribed_to (discord_user, subscription) VALUES ($1, $2)`,
 				userId,
 				subscription,
-			)
+			); err != nil {
+				if err1 := tx.Rollback(); err1 != nil {
+					return nil, err1
+				}
+				return nil, err
+			}
 		}
 	}
 
-	return added
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+
+	return added, nil
 }
 
 // Unsubscribes the user with id userId from items and returns deleted subscriptions
-func (s Todo) deleteSubscriptions(userId string, items []string) []string {
+func (s Todo) deleteSubscriptions(userId string, items []string) ([]string, error) {
 	deleted := []string{}
 	// Filter out items which are descendants of other items
 	// If we delete an ancestor of an item, the item itself will be deleted anyway
 	for _, subscription := range items {
-		ancestors := s.getAncestors(subscription)
+		ancestors, err := s.getAncestors(subscription)
+		if err != nil {
+			return nil, err
+		}
 		// If any items are part of the items ancestors, we don't have to delete the item itself
 		hasAncestorsToDelete := false
 		for _, ancestor := range ancestors {
@@ -389,79 +440,151 @@ func (s Todo) deleteSubscriptions(userId string, items []string) []string {
 
 		if !hasAncestorsToDelete {
 			deleted = append(deleted, subscription)
-			s.deleteSubscription(userId, subscription)
+			if err := s.deleteSubscription(userId, subscription); err != nil {
+				return nil, err
+			}
 		}
 	}
 
-	return deleted
+	return deleted, nil
 }
 
 // Deletes a single subscription
-func (s Todo) deleteSubscription(userId, subscription string) {
+func (s Todo) deleteSubscription(userId, subscription string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
+	defer cancel()
+
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+
 	// If the subscription is the root of the subscription tree, we can just delete the subscription
-	rows, _ := s.DB.Query(`SELECT * FROM todo.subscribed_to WHERE discord_user=$1 AND subscription=$2`,
+	rows, err := tx.Query(`SELECT * FROM todo.subscribed_to WHERE discord_user=$1 AND subscription=$2`,
 		userId,
 		subscription,
 	)
+	if err != nil {
+		if err1 := tx.Rollback(); err1 != nil {
+			return err1
+		}
+		return err
+	}
+
 	if rows.Next() {
-		s.DB.Exec(`DELETE FROM todo.subscribed_to WHERE discord_user=$1 AND subscription=$2`,
+		if _, err := tx.Exec(`DELETE FROM todo.subscribed_to WHERE discord_user=$1 AND subscription=$2`,
 			userId,
 			subscription,
-		)
-		return
+		); err != nil {
+			if err1 := tx.Rollback(); err1 != nil {
+				return err1
+			}
+			return err
+		}
 	}
 
 	// Else subscribe to all nodes on the same layer as the subscription itself
 	// Get the parent node
 	var parent string
-	rows, _ = s.DB.Query(`SELECT parent FROM todo.subscription_child WHERE child=$1`, subscription)
+	rows, err = tx.Query(`SELECT parent FROM todo.subscription_child WHERE child=$1`, subscription)
+	if err != nil {
+		if err1 := tx.Rollback(); err1 != nil {
+			return err1
+		}
+		return err
+	}
 	rows.Next()
 	rows.Scan(&parent)
 
 	// Subscribe to all children of the parent except the subscription itself
-	s.DB.Exec(`INSERT INTO todo.subscribed_to
+	if _, err := tx.Exec(`INSERT INTO todo.subscribed_to
 		(SELECT $1, child FROM todo.subscription_child WHERE parent=$2 AND child <> $3)`,
 		userId,
 		parent,
 		subscription,
-	)
+	); err != nil {
+		if err1 := tx.Rollback(); err1 != nil {
+			return err1
+		}
+		return err
+	}
+
+	ancestors, err := s.getAncestors(subscription)
+	if err != nil {
+		return err
+	}
 
 	// Delete the root of the original subscription tree
-	s.DB.Exec(`DELETE FROM todo.subscribed_to WHERE discord_user=$1 AND subscription=ANY($2)`,
+	if _, err := tx.Exec(`DELETE FROM todo.subscribed_to WHERE discord_user=$1 AND subscription=ANY($2)`,
 		userId,
-		pq.Array(s.getAncestors(subscription)),
-	)
+		pq.Array(ancestors),
+	); err != nil {
+		return err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // Adds an active subscription item with an id of id to all users subscribed to it
-func (s Todo) createSubscriptionItem(id string) {
+func (s Todo) createSubscriptionItem(id string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
+	defer cancel()
+
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+
 	var name string
-	rows, _ := s.DB.Query(`SELECT subscription_name FROM todo.subscription WHERE id=$1`, id)
+	rows, err := tx.Query(`SELECT subscription_name FROM todo.subscription WHERE id=$1`, id)
+	if err != nil {
+		if err1 := tx.Rollback(); err1 != nil {
+			return err1
+		}
+		return err
+	}
+
 	rows.Next()
 	rows.Scan(&name)
 
-	log.Println(constants.Blue, "Created new subscription item with id", id, "and name", name)
-
 	// Create the task with a userid of the bot
-	taskId, _ := s.CreateTask("0", name, "Automatically created for subscription "+id)
+	taskId, err := s.CreateTask("0", name, "Automatically created for subscription "+id)
+	if err != nil {
+		return err
+	}
 
 	// Get all subscriptions which are ancestors of the subscription
-	ancestors := s.getAncestors(id)
+	ancestors, err := s.getAncestors(id)
+	if err != nil {
+		return err
+	}
 
 	// Add the task to all users who are subscribed to one of the ancestors
-	s.DB.Exec(`INSERT INTO todo.active (discord_user, task)
+	if _, err := tx.Exec(`INSERT INTO todo.active (discord_user, task)
 		(
 			SELECT discord_user, $1 FROM todo.subscribed_to
 			WHERE subscription=ANY($2)
 		)`,
 		taskId,
 		pq.Array(ancestors),
-	)
+	); err != nil {
+		return err
+	}
+
+	log.Println(constants.Blue, "Created new subscription item with id", id, "and name", name)
+	return nil
 }
 
 // Gets all the ancestors and the node itself of a subscription with id rootId
-func (s Todo) getAncestors(rootId string) []string {
-	rows, _ := s.DB.Query(`
+func (s Todo) getAncestors(rootId string) ([]string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
+	defer cancel()
+
+	rows, err := s.DB.QueryContext(ctx, `
 	WITH RECURSIVE ids AS (
 		SELECT id FROM todo.subscription WHERE id=$1
 
@@ -470,6 +593,9 @@ func (s Todo) getAncestors(rootId string) []string {
 		SELECT relation.parent FROM todo.subscription_child AS relation 
 		JOIN ids ON relation.child=id
 	) SELECT * FROM ids`, rootId)
+	if err != nil {
+		return nil, err
+	}
 
 	var ids []string
 	for rows.Next() {
@@ -478,15 +604,21 @@ func (s Todo) getAncestors(rootId string) []string {
 		ids = append(ids, id)
 	}
 
-	return ids
+	return ids, nil
 }
 
 // Returns the roots of the forest of the forest made up by the subscriptions and initialises all the children of the nodes
-func (s Todo) getSubscriptionForest() []*subscriptionItemNode {
+func (s Todo) getSubscriptionForest() ([]*subscriptionItemNode, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
+	defer cancel()
+
 	// Get the roots
-	rows, _ := s.DB.Query(`SELECT id, subscription_name, schedule FROM todo.subscription 
+	rows, err := s.DB.QueryContext(ctx, `SELECT id, subscription_name, schedule FROM todo.subscription 
 	WHERE id NOT IN (SELECT child FROM todo.subscription_child)
 	ORDER BY id ASC`)
+	if err != nil {
+		return nil, err
+	}
 
 	var roots []*subscriptionItemNode
 	index := 1
@@ -498,6 +630,11 @@ func (s Todo) getSubscriptionForest() []*subscriptionItemNode {
 		indexes := []int{index}
 		index++
 
+		children, err := s.getChildren(id)
+		if err != nil {
+			return nil, err
+		}
+
 		root := &subscriptionItemNode{
 			value: subscriptionItem{
 				id:       id,
@@ -506,30 +643,41 @@ func (s Todo) getSubscriptionForest() []*subscriptionItemNode {
 			},
 			nodeIndexes: indexes,
 			// Get the children of the root
-			children: s.getChildren(id),
+			children: children,
 		}
 
 		roots = append(roots, root)
 		s.initChildrenIndexes(root, indexes)
 	}
 
-	return roots
+	return roots, nil
 }
 
 // Returns all children of a subscription with id nodeId and initialises its children recursively
-func (s Todo) getChildren(nodeId string) []*subscriptionItemNode {
-	rows, _ := s.DB.Query(
+func (s Todo) getChildren(nodeId string) ([]*subscriptionItemNode, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
+	defer cancel()
+
+	rows, err := s.DB.QueryContext(ctx,
 		`SELECT id, subscription_name, schedule FROM todo.subscription 
 		JOIN 
 		todo.subscription_child ON id=child WHERE parent=$1`,
 		nodeId,
 	)
+	if err != nil {
+		return nil, err
+	}
 
 	var children []*subscriptionItemNode
 	for rows.Next() {
 		var id, subscription_name, schedule string
 
 		rows.Scan(&id, &subscription_name, &schedule)
+
+		curChildren, err := s.getChildren(id)
+		if err != nil {
+			return nil, err
+		}
 
 		children = append(children, &subscriptionItemNode{
 			value: subscriptionItem{
@@ -538,11 +686,11 @@ func (s Todo) getChildren(nodeId string) []*subscriptionItemNode {
 				schedule: schedule,
 			},
 			// Get the children
-			children: s.getChildren(id),
+			children: curChildren,
 		})
 	}
 
-	return children
+	return children, nil
 }
 
 // Recursively initialises all the nodeIndexes fields of the node (Index starting at 1)
@@ -567,7 +715,6 @@ func (s Todo) getUserSubscriptionForest(userId string) ([]*subscriptionItemNode,
 		userId,
 	)
 	if err != nil {
-		log.Println(constants.Red, "Couldn't get subscriptions of user ", userId, err)
 		return nil, err
 	}
 
