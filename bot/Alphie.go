@@ -82,7 +82,7 @@ func messageCreate(bot *discord.Session, ctx *discord.MessageCreate) {
 	}
 
 	// Respond to messages similar to "Hello Alphie!"
-	if match, _ := regexp.MatchString("^hello alph(ie)?!?$", strings.ToLower(ctx.Content)); match {
+	if match, _ := regexp.MatchString("^(hello|hi) alph(ie)?!?$", strings.ToLower(ctx.Content)); match {
 		// Possible replies
 		messages := []string{
 			"Hello!",
