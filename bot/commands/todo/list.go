@@ -1,8 +1,6 @@
 package todo
 
 import (
-	"fmt"
-
 	discord "github.com/bwmarrin/discordgo"
 	_ "github.com/lib/pq"
 )
@@ -11,18 +9,17 @@ func (s Todo) listHelp() string {
 	return "Usage: `todo list [all|active|archived|done]`"
 }
 
-func (s Todo) List(bot *discord.Session, ctx *discord.MessageCreate, args []string) {
-	s.checkUserPresence(ctx.Author.ID)
-
-	bot.ChannelMessageDelete(ctx.ChannelID, ctx.Message.ID)
-
+func (s Todo) List(bot *discord.Session, ctx *discord.MessageCreate, args []string) error {
+	if err := s.checkUserPresence(ctx.Author.ID); err != nil {
+		return err
+	}
 	var todos []todoItem
 	var err error
 	if len(args) == 0 {
 		todos, err = s.getActiveTodos(ctx.Author.ID)
 	} else if len(args) > 1 {
 		bot.ChannelMessageSend(ctx.ChannelID, "Couldn't interpret command.\n"+s.listHelp())
-		return
+		return nil
 	} else {
 		switch args[0] {
 		case "all":
@@ -35,16 +32,17 @@ func (s Todo) List(bot *discord.Session, ctx *discord.MessageCreate, args []stri
 			todos, err = s.getDoneTodos(ctx.Author.ID)
 		case "help":
 			bot.ChannelMessageSend(ctx.ChannelID, s.listHelp())
-			return
+			return nil
 		default:
 			bot.ChannelMessageSend(ctx.ChannelID, "Couldn't interpret command.\n"+s.listHelp())
-			return
+			return nil
 		}
 	}
 
 	if err != nil {
-		bot.ChannelMessageSend(ctx.ChannelID, fmt.Sprint("Error while trying to list ", ctx.Author.Username, "'s items", err, "."))
+		return err
 	} else {
 		bot.ChannelMessageSendEmbed(ctx.ChannelID, todosToEmbed(todos, ctx))
 	}
+	return nil
 }

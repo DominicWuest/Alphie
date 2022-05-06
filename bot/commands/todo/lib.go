@@ -1,6 +1,7 @@
 package todo
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"log"
@@ -28,8 +29,15 @@ type todoItem struct {
 
 const (
 	todoEmbedColor     = 0x0BEEF0
-	messageDeleteDelay = 5000 * time.Millisecond
+	messageDeleteDelay = 5 * time.Second
+	dbTimeout          = 5 * time.Second
 )
+
+type InvalidIDError struct {
+	InvalidIDs []string
+}
+
+func (e *InvalidIDError) Error() string { return strings.Join(e.InvalidIDs, " ") }
 
 // Parses IDs as they get passed to the command
 // Turn IDs into format id[,id]+
@@ -63,30 +71,57 @@ func deduplicate(arr []string) []string {
 }
 
 // Checks if a user is present in the database and inserts them if not
-func (s Todo) checkUserPresence(id string) {
-	rows, _ := s.DB.Query(
+func (s Todo) checkUserPresence(id string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
+	defer cancel()
+
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+
+	rows, err := tx.Query(
 		`SELECT id FROM todo.discord_user WHERE id=$1`,
 		id,
 	)
+	if err != nil {
+		if err1 := tx.Rollback(); err1 != nil {
+			return err1
+		}
+		return err
+	}
 	if !rows.Next() { // User not yet in DB
 		log.Println(constants.Blue, "Added new user with id", id, "to database")
-		s.DB.Exec(
+		if _, err = tx.Exec(
 			`INSERT INTO todo.discord_user(id) VALUES ($1)`,
 			id,
-		)
+		); err != nil {
+			if err1 := tx.Rollback(); err1 != nil {
+				return err1
+			}
+			return err
+		}
 	}
+
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	return nil
 }
 
+// Creates a new task and returns its id
 func (s Todo) CreateTask(author, title, description string) (int, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
+	defer cancel()
+
 	// Insert task into task table and get its ID
-	rows, err := s.DB.Query(
+	rows, err := s.DB.QueryContext(ctx,
 		`INSERT INTO todo.task (creator, title, description) VALUES ($1, $2, $3) RETURNING id`,
 		author,
 		title,
 		description,
 	)
 	if err != nil {
-		log.Println(constants.Red, "Couldn't create new task", err)
 		return 0, err
 	}
 
@@ -134,14 +169,16 @@ func (s Todo) getAllTodos(userId string) ([]todoItem, error) {
 
 // Returns an array of all TODOs of a user from the specified table
 func (s Todo) getUserTODOs(user, table string) ([]todoItem, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
+	defer cancel()
+
 	items := []todoItem{}
 
-	rows, err := s.DB.Query(
+	rows, err := s.DB.QueryContext(ctx,
 		fmt.Sprintf(`SELECT t.* FROM todo.task AS t JOIN todo.%s AS a ON a.task=t.id WHERE a.discord_user=$1`, table),
 		user,
 	)
 	if err != nil {
-		log.Println(constants.Red, "Couldn't get users TODOs", err, "User:", user, "Table:", table)
 		return nil, err
 	}
 
@@ -182,14 +219,17 @@ func todosToEmbed(todos []todoItem, ctx *discord.MessageCreate) *discord.Message
 }
 
 // Changes the items status from "from" to "to"
+// Returns an InvalidIDError if invalid IDs were supplied
 func (s Todo) changeItemsStatus(userId string, itemIds []string, from, to string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
+	defer cancel()
+
 	// Check first if all IDs are valid
-	rows, err := s.DB.Query(fmt.Sprintf(`SELECT task FROM todo.%s WHERE discord_user=$1 AND task = ANY($2)`, from),
+	rows, err := s.DB.QueryContext(ctx, fmt.Sprintf(`SELECT task FROM todo.%s WHERE discord_user=$1 AND task = ANY($2)`, from),
 		userId,
 		pq.Array(itemIds),
 	)
 	if err != nil {
-		log.Println(constants.Red, "Couldn't change item status", err)
 		return err
 	}
 
@@ -210,16 +250,24 @@ func (s Todo) changeItemsStatus(userId string, itemIds []string, from, to string
 
 	// Check for wrong ID supplied
 	if len(idsCopy) != 0 {
-		return fmt.Errorf("user %s has no active task with id %s", userId, strings.Join(idsCopy, ", "))
+		return &InvalidIDError{idsCopy}
+	}
+
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
 	}
 
 	// Delete active items
-	_, err = s.DB.Exec(fmt.Sprintf(`DELETE FROM todo.%s WHERE discord_user=$1 AND task=ANY($2)`, from),
+	_, err = tx.Exec(fmt.Sprintf(`DELETE FROM todo.%s WHERE discord_user=$1 AND task=ANY($2)`, from),
 		userId,
 		pq.Array(itemIds),
 	)
 	if err != nil {
 		log.Println(constants.Red, "Couldn't change item status", err)
+		if err1 := tx.Rollback(); err1 != nil {
+			return err1
+		}
 		return err
 	}
 
@@ -229,12 +277,17 @@ func (s Todo) changeItemsStatus(userId string, itemIds []string, from, to string
 		pq.Array(itemIds),
 	)
 	if err != nil {
-		log.Println(constants.Red, "Couldn't change item status", err)
+		if err1 := tx.Rollback(); err1 != nil {
+			return err1
+		}
+		return err
+	}
+
+	if err := tx.Commit(); err != nil {
 		return err
 	}
 
 	log.Printf("%s Changed users %s items %v from %s to %s\n", constants.Blue, userId, itemIds, from, to)
-
 	return nil
 }
 
@@ -242,7 +295,7 @@ func (s Todo) changeItemsStatus(userId string, itemIds []string, from, to string
 // If the user presses the green button, submit gets called
 // If the user presses the red button, cancel gets called
 // Items has to be of non-zero length
-func (s *Todo) sendItemSelectMessage(bot *discord.Session, ctx *discord.MessageCreate, items []todoItem, content, placeholder string, submit, cancel func([]string, *discord.Message)) error {
+func (s *Todo) sendItemSelectMessage(bot *discord.Session, ctx *discord.MessageCreate, items []todoItem, content, placeholder string, submit, cancel func([]string, *discord.Message) error) error {
 	interactionId := "todo.select-item-message:" + ctx.Message.ID
 
 	if len(items) == 0 {
@@ -302,7 +355,7 @@ func (s *Todo) sendItemSelectMessage(bot *discord.Session, ctx *discord.MessageC
 	})
 
 	// Callback for select menu
-	constants.Handlers.MessageComponents[interactionId] = func(interaction *discord.Interaction) {
+	constants.Handlers.MessageComponents[interactionId] = func(interaction *discord.Interaction) error {
 		bot.InteractionRespond(interaction, &discord.InteractionResponse{
 			Type: discord.InteractionResponseDeferredMessageUpdate,
 		})
@@ -313,14 +366,15 @@ func (s *Todo) sendItemSelectMessage(bot *discord.Session, ctx *discord.MessageC
 		}
 
 		if user.ID != ctx.Author.ID {
-			return
+			return nil
 		}
 
 		s.SelectedOptions[interactionId] = interaction.MessageComponentData().Values
+		return nil
 	}
 
 	// Callback for submit button
-	constants.Handlers.MessageComponents["todo.select-item-message-submit:"+ctx.Message.ID] = func(interaction *discord.Interaction) {
+	constants.Handlers.MessageComponents["todo.select-item-message-submit:"+ctx.Message.ID] = func(interaction *discord.Interaction) error {
 		bot.InteractionRespond(interaction, &discord.InteractionResponse{
 			Type: discord.InteractionResponseDeferredMessageUpdate,
 		})
@@ -331,19 +385,21 @@ func (s *Todo) sendItemSelectMessage(bot *discord.Session, ctx *discord.MessageC
 		}
 
 		if user.ID != ctx.Author.ID {
-			return
+			return nil
 		}
 
-		go submit(s.SelectedOptions[interactionId], msg)
+		err := submit(s.SelectedOptions[interactionId], msg)
 
 		delete(s.SelectedOptions, interactionId)
 		delete(constants.Handlers.MessageComponents, interactionId)
 		delete(constants.Handlers.MessageComponents, "todo.done-message-submit:"+ctx.Message.ID)
 		delete(constants.Handlers.MessageComponents, "todo.done-message-cancel:"+ctx.Message.ID)
+
+		return err
 	}
 
 	// Callback for cancel button
-	constants.Handlers.MessageComponents["todo.select-item-message-cancel:"+ctx.Message.ID] = func(interaction *discord.Interaction) {
+	constants.Handlers.MessageComponents["todo.select-item-message-cancel:"+ctx.Message.ID] = func(interaction *discord.Interaction) error {
 		bot.InteractionRespond(interaction, &discord.InteractionResponse{
 			Type: discord.InteractionResponseDeferredMessageUpdate,
 		})
@@ -354,15 +410,17 @@ func (s *Todo) sendItemSelectMessage(bot *discord.Session, ctx *discord.MessageC
 		}
 
 		if user.ID != ctx.Author.ID {
-			return
+			return nil
 		}
 
-		go cancel(s.SelectedOptions[interactionId], msg)
+		err := cancel(s.SelectedOptions[interactionId], msg)
 
 		delete(s.SelectedOptions, interactionId)
 		delete(constants.Handlers.MessageComponents, interactionId)
 		delete(constants.Handlers.MessageComponents, "todo.done-message-submit:"+ctx.Message.ID)
 		delete(constants.Handlers.MessageComponents, "todo.done-message-cancel:"+ctx.Message.ID)
+
+		return err
 	}
 
 	return nil
