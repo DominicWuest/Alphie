@@ -7,5 +7,6 @@ RUN go build -o /Alphie
 
 FROM alpine:latest AS deployment
 WORKDIR /usr/src/app
+RUN apk add tzdata
 COPY --from=builder /Alphie .
 CMD ./Alphie

@@ -1,0 +1,136 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: alphie
+  labels:
+    name: alphie
+--- # Secrets relevant to multiple deployments
+apiVersion: v1
+kind: Secret
+metadata:
+  namespace: alphie
+  name: shared-secrets
+data:
+  postgres_user: **REMOVED**
+  postgres_password: **REMOVED**
+--- # Secrets only relevant to the bot
+apiVersion: v1
+kind: Secret
+metadata:
+  namespace: alphie
+  name: bot-secrets
+data:
+  api_token: **REMOVED**
+  authorized_ids: **REMOVED**
+  home_guild: **REMOVED**
+--- # Alphie-bot deployment. No service needed as only outgoing connections get established
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: alphie
+  name: bot
+  labels:
+    app: bot
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bot
+  template:
+    metadata:
+      labels:
+        app: bot
+    spec:
+      containers:
+      - name: bot
+        image: dominicwuest/alphie-bot:0.1.1
+        resources:
+          limits:
+            cpu: "500m"
+            memory: "1024Mi"
+        env:
+        - name: TZ
+          value: Europe/Zurich
+        - name: DB_HOSTNAME
+          value: postgres # Name of the ClusterIP of the postgres deployment
+        - name: DB_PORT
+          value: "5432"
+        - name: API_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: bot-secrets
+              key: api_token
+        - name: AUTHORIZED_IDS
+          valueFrom:
+            secretKeyRef:
+              name: bot-secrets
+              key: authorized_ids
+        - name: HOME_GUILD
+          valueFrom:
+            secretKeyRef:
+              name: bot-secrets
+              key: home_guild
+        - name: POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              name: shared-secrets
+              key: postgres_user
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: shared-secrets
+              key: postgres_password
+--- # Service for the database
+apiVersion: v1
+kind: Service
+metadata:
+  namespace: alphie
+  name: postgres
+spec:
+  type: ClusterIP
+  selector:
+    app: postgres
+  ports:
+    - protocol: TCP
+      port: 5432
+      targetPort: 5432
+--- # Postgres-DB deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: alphie
+  name: postgres
+  labels:
+    app: postgres
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+      - name: postgres
+        image: dominicwuest/alphie-db:0.1.0
+        resources:
+          limits:
+            cpu: "500m"
+            memory: "1024Mi"
+        ports:
+        - containerPort: 5432
+        env:
+        - name: TZ
+          value: Europe/Zurich
+        - name: POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              name: shared-secrets
+              key: postgres_user
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: shared-secrets
+              key: postgres_password
