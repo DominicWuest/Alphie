@@ -403,6 +403,7 @@ func (s Todo) addSubscriptions(userId string, items []string) ([]string, error) 
 				return nil, err
 			}
 		}
+		rows.Close()
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -475,6 +476,7 @@ func (s Todo) deleteSubscription(userId, subscription string) error {
 	}
 
 	if rows.Next() {
+		rows.Close()
 		if _, err := tx.Exec(`DELETE FROM todo.subscribed_to WHERE discord_user=$1 AND subscription=$2`,
 			userId,
 			subscription,
@@ -484,6 +486,10 @@ func (s Todo) deleteSubscription(userId, subscription string) error {
 			}
 			return err
 		}
+		if err := tx.Commit(); err != nil {
+			return err
+		}
+		return nil
 	}
 
 	// Else subscribe to all nodes on the same layer as the subscription itself
@@ -496,8 +502,10 @@ func (s Todo) deleteSubscription(userId, subscription string) error {
 		}
 		return err
 	}
+
 	rows.Next()
 	rows.Scan(&parent)
+	rows.Close()
 
 	// Subscribe to all children of the parent except the subscription itself
 	if _, err := tx.Exec(`INSERT INTO todo.subscribed_to
@@ -553,6 +561,7 @@ func (s Todo) createSubscriptionItem(id string) error {
 
 	rows.Next()
 	rows.Scan(&name)
+	rows.Close()
 
 	// Create the task with a userid of the bot
 	taskId, err := s.CreateTask("0", name, "Automatically created for subscription "+id)
