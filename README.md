@@ -17,4 +17,4 @@ And in `.env`:
 
 The HOME_GUILD should have an emote named ":alph:".
 
-After that, simply run `docker-compose up` and summon Alphie!
+After that, simply run `docker-compose up --build` and summon Alphie!
