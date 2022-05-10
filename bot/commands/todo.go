@@ -6,9 +6,9 @@ import (
 	"os"
 	"time"
 
-	"github.com/DominicWuest/Alphie/constants"
+	"github.com/DominicWuest/Alphie/bot/constants"
 
-	subcommands "github.com/DominicWuest/Alphie/commands/todo"
+	subcommands "github.com/DominicWuest/Alphie/bot/commands/todo"
 
 	discord "github.com/bwmarrin/discordgo"
 	_ "github.com/lib/pq"

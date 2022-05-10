@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/DominicWuest/Alphie/constants"
+	"github.com/DominicWuest/Alphie/bot/constants"
 
 	discord "github.com/bwmarrin/discordgo"
 	"github.com/lib/pq"
