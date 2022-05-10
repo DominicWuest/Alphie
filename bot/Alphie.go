@@ -11,8 +11,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/DominicWuest/Alphie/commands"
-	"github.com/DominicWuest/Alphie/constants"
+	"github.com/DominicWuest/Alphie/bot/commands"
+	"github.com/DominicWuest/Alphie/bot/constants"
 
 	discord "github.com/bwmarrin/discordgo"
 )

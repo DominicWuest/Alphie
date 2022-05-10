@@ -1,4 +1,4 @@
-module github.com/DominicWuest/Alphie
+module github.com/DominicWuest/Alphie/bot
 
 go 1.18
 
