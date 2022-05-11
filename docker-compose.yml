@@ -1,4 +1,15 @@
 services:
+  nginx:
+    container_name: alphie-nginx
+    build: ./nginx
+    env_file:
+     - .env
+    volumes:
+     - ./cdn/data:/usr/share/nginx/cdn
+    ports:
+      - "80:80"
+      - "443:443"
+
   bot:
     container_name: alphie-bot
     build: ./bot
@@ -22,3 +33,4 @@ services:
       - ./db/data:/var/lib/postgresql/data # Persistent data storage
     ports:
       - ${DB_PORT}:5432
+    
