@@ -5,6 +5,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
+	"path"
 	"regexp"
 	"strings"
 )
@@ -61,7 +62,7 @@ func main() {
 		}
 
 		// Create file with random name
-		file, err := os.CreateTemp(CDN_PATH+folder, "*."+file_extension)
+		file, err := os.CreateTemp(path.Join(CDN_PATH, folder), "*."+file_extension)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
@@ -76,7 +77,7 @@ func main() {
 
 		// Send back 200 OK with the path of the file
 		w.WriteHeader(200)
-		w.Write([]byte(fmt.Sprintf("{filename:%s}", strings.TrimPrefix(file.Name(), CDN_PATH))))
+		w.Write([]byte(fmt.Sprintf(`{"filename":"%s"}`, strings.TrimPrefix(file.Name(), CDN_PATH))))
 	})
 
 	port := os.Getenv("CDN_POST_PORT")
