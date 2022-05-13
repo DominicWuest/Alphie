@@ -17,72 +17,99 @@ var contentTypes = map[string]string{
 	"image/png":  "png",
 }
 
+const cdn_path = "/usr/share/nginx/cdn/"
+
 func main() {
-	const CDN_PATH = "/usr/share/nginx/cdn/"
-
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		// Check if method is POST
-		if r.Method != "POST" {
+		// Handle accepted methods
+		if r.Method == http.MethodPost {
+			handlePost(w, r)
+		} else if r.Method == http.MethodDelete {
+			handleDelete(w, r)
+		} else {
 			w.WriteHeader(http.StatusMethodNotAllowed)
-			return
 		}
-
-		// Check if request is to a folder (i.e. /images, /lib etc)
-		folder := regexp.MustCompile("^/(.+)/?$").FindString(r.URL.EscapedPath())
-		if len(folder) == 0 {
-			w.WriteHeader(http.StatusNotFound)
-			return
-		}
-
-		// Check if requested folder exists
-		if _, err := os.Stat(CDN_PATH + folder); os.IsNotExist(err) {
-			w.WriteHeader(http.StatusNotFound)
-			return
-		}
-
-		// Check that content-type is set
-		contentType := r.Header["Content-Type"]
-		if len(contentType) == 0 {
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-
-		// Check for valid content type
-		file_extension, found := contentTypes[r.Header["Content-Type"][0]]
-		if !found {
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-
-		// Read data
-		postData, err := ioutil.ReadAll(r.Body)
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-
-		// Create file with random name
-		file, err := os.CreateTemp(path.Join(CDN_PATH, folder), "*."+file_extension)
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-		file.Chmod(0644)
-
-		// Write to file
-		if _, err = file.Write(postData); err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-
-		// Send back 200 OK with the path of the file
-		w.WriteHeader(200)
-		w.Write([]byte(fmt.Sprintf(`{"filename":"%s"}`, strings.TrimPrefix(file.Name(), CDN_PATH))))
 	})
 
-	port := os.Getenv("CDN_POST_PORT")
+	port := os.Getenv("CDN_REST_PORT")
 	if len(port) == 0 {
-		panic("No CDN_POST_PORT specified")
+		panic("No CDN_REST_PORT specified")
 	}
 	http.ListenAndServe(":"+port, nil)
+}
+
+func handlePost(w http.ResponseWriter, r *http.Request) {
+	// Check if request is to a folder (i.e. /images, /lib etc)
+	folder := regexp.MustCompile("^/(.+)/?$").FindString(r.URL.EscapedPath())
+	if len(folder) == 0 {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+
+	// Check if requested folder exists
+	if _, err := os.Stat(cdn_path + folder); os.IsNotExist(err) {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+
+	// Check that content-type is set
+	contentType := r.Header["Content-Type"]
+	if len(contentType) == 0 {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	// Check for valid content type
+	file_extension, found := contentTypes[r.Header["Content-Type"][0]]
+	if !found {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	// Read data
+	postData, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	// Create file with random name
+	file, err := os.CreateTemp(path.Join(cdn_path, folder), "*."+file_extension)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	file.Chmod(0644)
+
+	// Write to file
+	if _, err = file.Write(postData); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	// Send back 200 OK with the path of the file
+	w.WriteHeader(200)
+	w.Write([]byte(fmt.Sprintf(`{"filename":"%s"}`, strings.TrimPrefix(file.Name(), cdn_path))))
+}
+
+func handleDelete(w http.ResponseWriter, r *http.Request) {
+	// Check if request is to a file in a folder (i.e. /images/213123.gif, /lib/0913875.jpg etc)
+	file := regexp.MustCompile("^/(.+/.+)/?$").FindString(r.URL.EscapedPath())
+	if len(file) == 0 {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+
+	// Check if requested file exists
+	if _, err := os.Stat(cdn_path + file); os.IsNotExist(err) {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+
+	// Delete file
+	if err := os.Remove(cdn_path + file); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
 }
