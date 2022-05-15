@@ -17,9 +17,13 @@ var contentTypes = map[string]string{
 	"image/png":  "png",
 }
 
-const cdn_path = "/usr/share/nginx/cdn/"
+var cdn_path = os.Getenv("CDN_ROOT")
 
 func main() {
+	if len(cdn_path) == 0 {
+		panic("No CDN_ROOT specified")
+	}
+
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		// Handle accepted methods
 		if r.Method == http.MethodPost {

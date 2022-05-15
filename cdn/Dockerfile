@@ -7,5 +7,5 @@ FROM alpine:latest AS deployment
 WORKDIR /usr/src/app
 RUN apk add tzdata
 COPY --from=builder /server .
-EXPOSE ${CDN_REST_PORT}
+EXPOSE 1337
 CMD ./server
