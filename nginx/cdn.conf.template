@@ -11,7 +11,7 @@ server {
 
     server_name ${CDN_DOMAIN};
 
-    root /usr/share/nginx/cdn;
+    root ${CDN_ROOT};
 
     location ~ (\.gitkeep$) {
         return 404;
