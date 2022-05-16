@@ -23,19 +23,6 @@ data:
   api_token: **REMOVED**
   authorized_ids: **REMOVED**
   home_guild: **REMOVED**
---- # temporary PV
-apiVersion: v1
-kind: PersistentVolume
-metadata:
-  name: cdn-files
-spec:
-  storageClassName: ""
-  capacity:
-    storage: 5Gi
-  accessModes:
-  - ReadWriteMany
-  hostPath:
-    path: "/mnt/test"
 --- # Environment variables used by all deployments
 apiVersion: v1
 kind: ConfigMap
@@ -246,19 +233,6 @@ spec:
     - protocol: TCP
       port: 5432
       targetPort: 5432
---- # DB PV
-apiVersion: v1
-kind: PersistentVolume
-metadata:
-  name: postgres-pv
-spec:
-  storageClassName: ""
-  capacity:
-    storage: 5Gi
-  accessModes:
-  - ReadWriteOnce
-  hostPath:
-    path: "/mnt/data"
 --- # DB PVC
 apiVersion: v1
 kind: PersistentVolumeClaim
