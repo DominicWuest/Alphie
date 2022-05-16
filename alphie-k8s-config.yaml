@@ -51,6 +51,31 @@ data:
   CDN_HOSTNAME: cdn # Name of the ClusterIP of the alphie-cdn service
   CDN_ROOT: "/usr/share/nginx/cdn"
   CDN_DOMAIN: "cdn.alphie.dev"
+--- # Ingress service
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  namespace: alphie
+  name: ingress
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  ingressClassName: nginx
+  tls:
+  - hosts:
+    - "cdn.alphie.dev"
+    secretName: alphie-tls # Has to be set up manually
+  rules:
+  - host: "cdn.alphie.dev"
+    http:
+      paths:
+      - pathType: Prefix
+        path: "/"
+        backend:
+          service:
+            name: nginx
+            port:
+              number: 80
 --- # Alphie-nginx service
 apiVersion: v1
 kind: Service
@@ -58,14 +83,12 @@ metadata:
   namespace: alphie
   name: nginx
 spec:
-  type: NodePort
+  type: ClusterIP 
   selector:
     app: nginx
   ports:
   - name: nginx-http
     port: 80
-  - name: nginx-https
-    port: 443
 --- # Alphie-nginx deployment
 apiVersion: apps/v1
 kind: Deployment
