@@ -129,6 +129,7 @@ func (s Todo) CreateTask(author, title, description string) (int, error) {
 	var taskId int
 	rows.Next()
 	rows.Scan(&taskId)
+	rows.Close()
 
 	log.Printf("%s Created new task; creator: %s, title: %s, description: %s\n", constants.Blue, author, title, description)
 
