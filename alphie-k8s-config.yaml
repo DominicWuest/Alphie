@@ -4,15 +4,15 @@ metadata:
   name: alphie
   labels:
     name: alphie
---- # Secrets relevant to multiple deployments
+--- # Secrets for the DB
 apiVersion: v1
 kind: Secret
 metadata:
   namespace: alphie
-  name: shared-secrets
+  name: db-secrets
 data:
-  postgres_user: **REMOVED**
-  postgres_password: **REMOVED**
+  POSTGRES_USER: **REMOVED**
+  POSTGRES_PASSWORD: **REMOVED**
 --- # Secrets only relevant to the bot
 apiVersion: v1
 kind: Secret
@@ -20,9 +20,9 @@ metadata:
   namespace: alphie
   name: bot-secrets
 data:
-  api_token: **REMOVED**
-  authorized_ids: **REMOVED**
-  home_guild: **REMOVED**
+  API_TOKEN: **REMOVED**
+  AUTHORIZED_IDS: **REMOVED**
+  HOME_GUILD: **REMOVED**
 --- # Environment variables used by all deployments
 apiVersion: v1
 kind: ConfigMap
@@ -31,6 +31,15 @@ metadata:
   name: shared-config
 data:
   TZ: "Europe/Zurich"
+--- # Environment variables for DB access
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  namespace: alphie
+  name: db-config
+data:
+  DB_HOSTNAME: postgres
+  DB_PORT: "5432" # Name of the ClusterIP of the postgres deployment
 --- # Environment variables for CDN backend services
 apiVersion: v1
 kind: ConfigMap
@@ -187,38 +196,15 @@ spec:
           limits:
             cpu: "500m"
             memory: "1024Mi"
-        env:
-        - name: TZ
-          value: Europe/Zurich
-        - name: DB_HOSTNAME
-          value: postgres # Name of the ClusterIP of the postgres deployment
-        - name: DB_PORT
-          value: "5432"
-        - name: API_TOKEN
-          valueFrom:
-            secretKeyRef:
-              name: bot-secrets
-              key: api_token
-        - name: AUTHORIZED_IDS
-          valueFrom:
-            secretKeyRef:
-              name: bot-secrets
-              key: authorized_ids
-        - name: HOME_GUILD
-          valueFrom:
-            secretKeyRef:
-              name: bot-secrets
-              key: home_guild
-        - name: POSTGRES_USER
-          valueFrom:
-            secretKeyRef:
-              name: shared-secrets
-              key: postgres_user
-        - name: POSTGRES_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: shared-secrets
-              key: postgres_password
+        envFrom:
+        - secretRef:
+            name: db-secrets
+        - secretRef:
+            name: bot-secrets
+        - configMapRef:
+            name: db-config
+        - configMapRef:
+            name: shared-config
 --- # Service for the database
 apiVersion: v1
 kind: Service
@@ -279,19 +265,11 @@ spec:
             mountPath: /var/lib/postgresql/data
         ports:
         - containerPort: 5432
-        env:
-        - name: TZ
-          value: Europe/Zurich
-        - name: POSTGRES_USER
-          valueFrom:
-            secretKeyRef:
-              name: shared-secrets
-              key: postgres_user
-        - name: POSTGRES_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: shared-secrets
-              key: postgres_password
+        envFrom:
+        - secretRef:
+            name: db-secrets
+        - configMapRef:
+            name: shared-config
       volumes:
         - name: postgres-pv
           persistentVolumeClaim:
