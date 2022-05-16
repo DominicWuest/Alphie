@@ -1,1 +1,4 @@
 db/data
+
+cdn/data/*/*
+!cdn/data/*/.gitkeep
