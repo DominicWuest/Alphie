@@ -23,6 +23,7 @@ type Blackjack struct {
 	playerCards  []string
 	dealerCards  []string
 	currCards    []string
+	timeoutTimer *time.Timer
 }
 
 var cards = [...]string{"2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A"}
@@ -32,6 +33,8 @@ const waiting = 1 // Waiting for user input
 const over = 2    // Game has ended
 
 const dealingDelay = 250 * time.Millisecond
+
+const timeoutDelay = 15 * time.Second
 
 const embedColor = 0xC27C0E
 
@@ -165,7 +168,30 @@ func (s *Blackjack) startNewGame(bot *discord.Session, ctx *discord.MessageCreat
 		s.deal(false)
 		s.state = waiting
 		embed = s.genEmbed(0)
-		time.Sleep(dealingDelay)
+
+		// Create the timer to timeout inactive games
+		s.timeoutTimer = time.AfterFunc(timeoutDelay, func() {
+			log.Println(constants.Yellow, ctx.Author.Username, "timed out their Blackjack game")
+			msg := s.message
+			s.exit()
+			embed := discord.MessageEmbed{
+				Color: embedColor,
+				Author: &discord.MessageEmbedAuthor{
+					Name: "Blackjack",
+				},
+				Fields: []*discord.MessageEmbedField{
+					{
+						Name:  "Game Timed Out",
+						Value: ctx.Author.Mention() + " took too long to make an input, the game was thus stopped.",
+					},
+				},
+				Footer: &discord.MessageEmbedFooter{
+					Text:    "Invoked by " + ctx.Author.Username,
+					IconURL: ctx.Author.AvatarURL(""),
+				},
+			}
+			bot.ChannelMessageEditEmbed(ctx.ChannelID, msg.ID, &embed)
+		})
 		bot.ChannelMessageEditEmbed(ctx.ChannelID, s.message.ID, &embed)
 	}()
 }
@@ -284,6 +310,9 @@ func (s *Blackjack) handleHit(interaction *discord.Interaction) error {
 		Type: discord.InteractionResponseDeferredMessageUpdate,
 	})
 
+	s.timeoutTimer.Stop()
+	s.timeoutTimer.Reset(timeoutDelay)
+
 	user := interaction.User
 	if user == nil {
 		user = interaction.Member.User
@@ -330,6 +359,9 @@ func (s *Blackjack) handleStand(interaction *discord.Interaction) error {
 		Type: discord.InteractionResponseDeferredMessageUpdate,
 	})
 
+	s.timeoutTimer.Stop()
+	s.timeoutTimer.Reset(timeoutDelay)
+
 	user := interaction.User
 	if user == nil {
 		user = interaction.Member.User
@@ -365,6 +397,8 @@ func (s *Blackjack) handleExit(interaction *discord.Interaction) error {
 		Type: discord.InteractionResponseDeferredMessageUpdate,
 	})
 
+	s.timeoutTimer.Stop()
+
 	user := interaction.User
 	if user == nil {
 		user = interaction.Member.User
@@ -392,6 +426,8 @@ func (s *Blackjack) handleRestart(interaction *discord.Interaction) error {
 	s.bot.InteractionRespond(interaction, &discord.InteractionResponse{
 		Type: discord.InteractionResponseDeferredMessageUpdate,
 	})
+
+	s.timeoutTimer.Stop()
 
 	user := interaction.User
 	if user == nil {
