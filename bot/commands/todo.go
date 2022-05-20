@@ -71,18 +71,18 @@ func (s Todo) Init(args ...interface{}) constants.Command {
 
 	success := false
 	err = nil
-	// Try to ping 10 times, maybe we need to wait for the DB to boot up first
-	for i := 0; i < 10; i++ {
+	// Try to ping 30, retrying every 2 seconds, maybe we need to wait for the DB to boot up first
+	for i := 0; i < 30; i++ {
 		if err = db.Ping(); err == nil {
 			success = true
 			err = nil
 			break
 		}
-		time.Sleep(500 * time.Millisecond)
+		time.Sleep(2 * time.Second)
 	}
 
 	if !success {
-		fmt.Println("Error connecting to the database:", err)
+		panic(fmt.Sprintf("Failed to connect to the database %+v", err))
 	} else {
 		s.DB = db
 		sx := (subcommands.Todo)(s)
