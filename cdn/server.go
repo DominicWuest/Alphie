@@ -24,6 +24,19 @@ func main() {
 		panic("No CDN_ROOT specified")
 	}
 
+	// Create folders where content gets stored if they don't exist
+	folders := []string{"bounce"}
+	for _, folder := range folders {
+		folderPath := path.Join(cdn_path, folder)
+		_, err := os.Stat(folderPath)
+		if os.IsNotExist(err) {
+			errDir := os.MkdirAll(folderPath, 0755)
+			if errDir != nil {
+				panic(err)
+			}
+		}
+	}
+
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		// Handle accepted methods
 		if r.Method == http.MethodPost {
