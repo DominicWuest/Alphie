@@ -42,3 +42,12 @@ services:
      - .env
     volumes:
      - ./cdn/data:/usr/share/nginx/cdn
+    
+  grpc:
+    container_name: alphie-grpc
+    hostname: ${GRPC_HOSTNAME} # Defined in .env
+    build: ./rpc
+    env_file:
+     - .env
+    ports:
+      - ${GRPC_PORT}:${GRPC_PORT}

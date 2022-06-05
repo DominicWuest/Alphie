@@ -30,6 +30,7 @@ func main() {
 	COMMANDS["ping"] = commands.Ping{}.Init()
 	COMMANDS["blackjack"] = commands.Blackjack{}.Init()
 	COMMANDS["todo"] = commands.Todo{}.Init()
+	COMMANDS["image"] = commands.ImageGeneration{}.Init()
 
 	COMMANDS["help"] = commands.Help{}.Init(&COMMANDS)
 
