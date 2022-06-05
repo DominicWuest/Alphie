@@ -3,6 +3,7 @@ module github.com/DominicWuest/Alphie/rpc
 go 1.18
 
 require (
+	github.com/andybons/gogif v0.0.0-20140526152223-16d573594812
 	github.com/fogleman/gg v1.3.0
 	google.golang.org/grpc v1.46.2
 	google.golang.org/protobuf v1.27.1
