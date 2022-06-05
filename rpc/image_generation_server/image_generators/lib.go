@@ -2,9 +2,10 @@ package image_generators
 
 import (
 	"image"
-	"image/color/palette"
 	"image/draw"
 	"os"
+
+	"github.com/andybons/gogif"
 )
 
 var cdnHostname string
@@ -49,7 +50,9 @@ func Init() {
 // This is needed, as the drawing library returns an image.Image but the gif library requires an image.Paletted
 func rgbaToPaletted(img image.Image) *image.Paletted {
 	bounds := img.Bounds()
-	dst := image.NewPaletted(bounds, palette.WebSafe)
+	dst := image.NewPaletted(bounds, nil)
+	quantizer := gogif.MedianCutQuantizer{NumColor: 64}
+	quantizer.Quantize(dst, bounds, img, image.Point{})
 	draw.Draw(dst, bounds, img, bounds.Min, draw.Src)
 	return dst
 }
