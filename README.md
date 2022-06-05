@@ -17,4 +17,6 @@ And in `.env`:
 
 The HOME_GUILD should have an emote named ":alph:".
 
+Additionally, the gRPC proto files have to be generated. This can be done by changing to the `rpc` directory and running `make gen`.
+
 After that, simply run `docker-compose up --build` and summon Alphie!

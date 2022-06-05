@@ -1,0 +1,8 @@
+gen:
+	protoc --go-grpc_out=image_generation_server/image_generation_pb --go-grpc_opt=paths=source_relative \
+			--go-grpc_out=../bot/commands/image_generation --go-grpc_opt=paths=source_relative \
+			\
+			--go_out=image_generation_server/image_generation_pb --go_opt=paths=source_relative \
+			--go_out=../bot/commands/image_generation --go_opt=paths=source_relative \
+			\
+			-I image_generation_server/image_generation_pb image_generation.proto	

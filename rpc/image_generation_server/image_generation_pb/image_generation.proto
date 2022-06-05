@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+package image_generation;
+
+option go_package = "github.com/DominicWuest/Alphie/rpc/image_generation/pb;pb";
+
+message ImageRequest {
+    // The random seed
+    // May be omitted if callee should decide over seed
+    optional int64 seed = 1;
+}
+
+message ImageResponse {
+    // The path where the generated image got stored at
+    string content_path = 1;
+}
+
+service ImageGeneration {
+    // Makes a ball bounce around in a square
+    rpc Bounce(ImageRequest) returns (ImageResponse) {}
+}
