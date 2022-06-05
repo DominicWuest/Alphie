@@ -38,8 +38,8 @@ metadata:
   namespace: alphie
   name: db-config
 data:
-  DB_HOSTNAME: postgres
-  DB_PORT: "5432" # Name of the ClusterIP of the postgres deployment
+  DB_HOSTNAME: postgres # Name of the ClusterIP of the postgres deployment
+  DB_PORT: "5432" 
 --- # Environment variables for CDN backend services
 apiVersion: v1
 kind: ConfigMap
@@ -51,6 +51,15 @@ data:
   CDN_HOSTNAME: cdn # Name of the ClusterIP of the alphie-cdn service
   CDN_ROOT: "/usr/share/nginx/cdn"
   CDN_DOMAIN: "cdn.alphie.dev"
+--- # Environment variables for gRPC backend services
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  namespace: alphie
+  name: grpc-config
+data:
+  GRPC_HOSTNAME: grpc # Name of the ClusterIP of the alphie-grpc service
+  GRPC_PORT: "2003"
 --- # Ingress service
 apiVersion: networking.k8s.io/v1
 kind: Ingress
@@ -185,7 +194,7 @@ spec:
     spec:
       containers:
       - name: cdn
-        image: dominicwuest/alphie-cdn:0.1.0
+        image: dominicwuest/alphie-cdn:0.2.0
         resources:
           limits:
             cpu: "250m"
@@ -232,7 +241,7 @@ spec:
     spec:
       containers:
       - name: bot
-        image: dominicwuest/alphie-bot:0.1.1
+        image: dominicwuest/alphie-bot:0.2.0
         resources:
           limits:
             cpu: "500m"
@@ -245,6 +254,10 @@ spec:
         - configMapRef:
             name: db-config
         - configMapRef:
+            name: cdn-config
+        - configMapRef:
+            name: grpc-config
+        - configMapRef:
             name: shared-config
       affinity:
         nodeAffinity:
@@ -255,6 +268,61 @@ spec:
                 operator: In 
                 values:
                 - brittany
+--- # Alphie-grpc service
+kind: Service
+apiVersion: v1
+metadata:
+  namespace: alphie
+  name: grpc
+spec:
+  selector:
+    app: grpc
+  type: ClusterIP
+  ports:
+  - name: grpc-port
+    port: 2003
+    targetPort: 2003
+--- # Alphie-grpc deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: alphie
+  name: grpc
+  labels:
+    app: grpc
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: grpc
+  template:
+    metadata:
+      labels:
+        app: grpc
+    spec:
+      containers:
+      - name: grpc
+        image: dominicwuest/alphie-grpc:0.1.0
+        resources:
+          limits:
+            cpu: "3.0"
+            memory: "4Gi"
+        envFrom:
+        - configMapRef:
+            name: shared-config
+        - configMapRef:
+            name: cdn-config
+        - configMapRef:
+            name: grpc-config
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: hostname
+                operator: In 
+                values:
+                - charlie
 --- # Service for the database
 apiVersion: v1
 kind: Service
