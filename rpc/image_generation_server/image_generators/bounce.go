@@ -10,6 +10,7 @@ import (
 	"io/ioutil"
 	"math/rand"
 	"net/http"
+	"sync"
 
 	"github.com/fogleman/gg"
 )
@@ -126,13 +127,16 @@ func (s *Bounce) genRandomBall() Bounce {
 func (s *Bounce) generateBounce() (*gif.GIF, error) {
 	const deltaT float64 = 0.1
 
-	var images []*image.Paletted
+	images := make([]*image.Paletted, frames)
 
 	ball := s.genRandomBall()
 
-	context := gg.NewContext(width, height)
+	wg := sync.WaitGroup{}
+	wg.Add(frames)
 
 	for i := 0; i < frames; i++ {
+		// Have to reset context so goroutines image.Image.At don't clash
+		context := gg.NewContext(width, height)
 		// Set the background
 		context.SetColor(ball.bgColor)
 		context.Clear()
@@ -142,7 +146,8 @@ func (s *Bounce) generateBounce() (*gif.GIF, error) {
 		context.DrawCircle(ball.ballPos[0], ball.ballPos[1], ball.radius)
 		context.Fill()
 
-		images = append(images, rgbaToPaletted(context.Image()))
+		go insertPalettedFromRGBA(context.Image(), i, images, &wg)
+
 		// Update the ball
 		ball.ballPos[0] += ball.ballVel[0] * deltaT
 		ball.ballPos[1] += ball.ballVel[1] * deltaT
@@ -155,6 +160,7 @@ func (s *Bounce) generateBounce() (*gif.GIF, error) {
 			ball.ballVel[1] *= -1
 		}
 	}
+	wg.Wait()
 
 	return &gif.GIF{
 		Image: images,
