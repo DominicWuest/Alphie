@@ -4,6 +4,7 @@ import (
 	"image"
 	"image/draw"
 	"os"
+	"sync"
 
 	"github.com/andybons/gogif"
 )
@@ -46,13 +47,20 @@ func Init() {
 	}
 }
 
-// Converts an RGBA image to a paletted image
-// This is needed, as the drawing library returns an image.Image but the gif library requires an image.Paletted
-func rgbaToPaletted(img image.Image) *image.Paletted {
+/*
+  Converts an RGBA image to a paletted image
+  This is needed, as the drawing library returns an image.Image but the gif library requires an image.Paletted
+  It is to be executed as a goroutine, as the Draw function is rather slow
+  The function inserts the image at the provided index in the images array and calls Done on the provided WaitGroup
+*/
+func insertPalettedFromRGBA(img image.Image, index int, images []*image.Paletted, wg *sync.WaitGroup) {
+	defer wg.Done()
+
 	bounds := img.Bounds()
 	dst := image.NewPaletted(bounds, nil)
 	quantizer := gogif.MedianCutQuantizer{NumColor: 64}
 	quantizer.Quantize(dst, bounds, img, image.Point{})
 	draw.Draw(dst, bounds, img, bounds.Min, draw.Src)
-	return dst
+
+	images[index] = dst
 }
