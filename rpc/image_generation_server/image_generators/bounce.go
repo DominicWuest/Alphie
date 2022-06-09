@@ -1,16 +1,9 @@
 package image_generators
 
 import (
-	"bytes"
-	"encoding/json"
-	"fmt"
 	"image"
 	"image/color"
-	"image/gif"
-	"io/ioutil"
 	"math/rand"
-	"net/http"
-	"sync"
 
 	"github.com/fogleman/gg"
 )
@@ -22,47 +15,98 @@ type Bounce struct {
 	ballPos [2]float64
 	// Velocity
 	ballVel [2]float64
+	// deltaT for euler integration
+	deltaT float64
 	// The ball's color
 	ballColor color.RGBA
 	// The background color
 	bgColor color.RGBA
 }
 
-func (s *Bounce) GenerateImage(seed int64) (string, error) {
-	const baseUrl string = "/bounce"
-
+func (s *Bounce) Init(seed int64) (ImageGenerator, error) {
 	rand.Seed(seed)
 
-	generatedGif, err := s.generateBounce()
-	if err != nil {
-		return "", err
-	}
-	gifAsBytes := bytes.NewBuffer([]byte{})
-	gif.EncodeAll(gifAsBytes, generatedGif)
-	// Send created GIF
-	res, err := http.Post("http://"+cdnConnString+baseUrl, "image/gif", gifAsBytes)
-	if err != nil {
-		return "", err
-	}
-	if res.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("failed to post created gif: %+v", res)
+	const maxRadius float64 = 30
+	const minRadius float64 = 10
+
+	const maxVel float64 = 150
+	const minVel float64 = 65
+
+	const deltaT float64 = 0.1
+
+	width, height := s.GetContextDimensions()
+
+	// Generate a radius between minRadius and maxRadius
+	radius := rand.Float64()*(maxRadius-minRadius) + minRadius
+	ball := Bounce{
+		radius: radius,
+		// Generate the balls position, making sure it is fully on screen
+		ballPos: [2]float64{
+			rand.Float64()*(float64(width)-2*radius) + radius,
+			rand.Float64()*(float64(height)-2*radius) + radius,
+		},
+		// Generating the balls velocity, being in [minVel, maxVel]
+		ballVel: [2]float64{
+			rand.Float64()*(maxVel-minVel) + minVel,
+			rand.Float64()*90 + 10,
+		},
+		deltaT: deltaT,
+		ballColor: color.RGBA{
+			R: uint8(rand.Uint32()),
+			G: uint8(rand.Uint32()),
+			B: uint8(rand.Uint32()),
+			A: 0xFF,
+		},
 	}
 
-	// Read response / where GIF was stored
-	content, err := ioutil.ReadAll(res.Body)
-	if err != nil {
-		return "", err
+	ball.bgColor = s.backgroundColor(ball.ballColor)
+
+	return &ball, nil
+}
+
+func (s *Bounce) Update() error {
+	s.ballPos[0] += s.ballVel[0] * s.deltaT
+	s.ballPos[1] += s.ballVel[1] * s.deltaT
+
+	// Make the ball bounce off the walls
+	width, height := s.GetContextDimensions()
+	if s.ballPos[0]-s.radius <= 0 || s.ballPos[0]+s.radius >= float64(width) {
+		s.ballVel[0] *= -1
 	}
-	response := postResponse{}
-	if err := json.Unmarshal(content, &response); err != nil {
-		return "", err
+	if s.ballPos[1]-s.radius <= 0 || s.ballPos[1]+s.radius >= float64(height) {
+		s.ballVel[1] *= -1
 	}
 
-	return response.Filename, nil
+	return nil
+}
+
+func (s *Bounce) Draw(ctx *gg.Context) (image.Image, error) {
+	// Set the background
+	ctx.SetColor(s.bgColor)
+	ctx.Clear()
+
+	// Draw the ball
+	ctx.SetColor(s.ballColor)
+	ctx.DrawCircle(s.ballPos[0], s.ballPos[1], s.radius)
+	ctx.Fill()
+
+	return ctx.Image(), nil
+}
+
+func (s *Bounce) GetFramesAmount() int {
+	return 10 * 24 // ~10 seconds of playtime
+}
+
+func (s *Bounce) GetContextDimensions() (int, int) {
+	return 250, 200
+}
+
+func (s *Bounce) GetPostURL() string {
+	return "bounce"
 }
 
 // Returns the background color given the color of the ball
-// Use formula 0.3*R+0.6*G+0.1*B to calculate brightness, above 0.5 => make background darker
+// Use formula 0.3*R+0.6*G+0.1*B to calculate brightness, above 0.5 => use dark background
 func (s *Bounce) backgroundColor(col color.RGBA) color.RGBA {
 	var brightBackground color.RGBA = color.RGBA{
 		R: 0xCC,
@@ -87,83 +131,4 @@ func (s *Bounce) backgroundColor(col color.RGBA) color.RGBA {
 		return darkBackground
 	}
 	return brightBackground
-}
-
-func (s *Bounce) genRandomBall() Bounce {
-	const maxRadius float64 = 30
-	const minRadius float64 = 10
-
-	const maxVel float64 = 150
-	const minVel float64 = 65
-
-	// Generate a radius between minRadius and maxRadius
-	radius := rand.Float64()*(maxRadius-minRadius) + minRadius
-	ball := Bounce{
-		radius: radius,
-		// Generate the balls position, making sure it is fully on screen
-		ballPos: [2]float64{
-			rand.Float64()*(float64(width)-2*radius) + radius,
-			rand.Float64()*(float64(height)-2*radius) + radius,
-		},
-		// Generating the balls velocity, being in [minVel, maxVel]
-		ballVel: [2]float64{
-			rand.Float64()*(maxVel-minVel) + minVel,
-			rand.Float64()*90 + 10,
-		},
-		ballColor: color.RGBA{
-			R: uint8(rand.Uint32()),
-			G: uint8(rand.Uint32()),
-			B: uint8(rand.Uint32()),
-			A: 0xFF,
-		},
-	}
-
-	ball.bgColor = s.backgroundColor(ball.ballColor)
-
-	return ball
-}
-
-// Generates the actual GIF
-func (s *Bounce) generateBounce() (*gif.GIF, error) {
-	const deltaT float64 = 0.1
-
-	images := make([]*image.Paletted, frames)
-
-	ball := s.genRandomBall()
-
-	wg := sync.WaitGroup{}
-	wg.Add(frames)
-
-	for i := 0; i < frames; i++ {
-		// Have to reset context so goroutines image.Image.At don't clash
-		context := gg.NewContext(width, height)
-		// Set the background
-		context.SetColor(ball.bgColor)
-		context.Clear()
-
-		// Draw the ball
-		context.SetColor(ball.ballColor)
-		context.DrawCircle(ball.ballPos[0], ball.ballPos[1], ball.radius)
-		context.Fill()
-
-		go insertPalettedFromRGBA(context.Image(), i, images, &wg)
-
-		// Update the ball
-		ball.ballPos[0] += ball.ballVel[0] * deltaT
-		ball.ballPos[1] += ball.ballVel[1] * deltaT
-
-		// Make the ball bounce off the walls
-		if ball.ballPos[0]-ball.radius <= 0 || ball.ballPos[0]+ball.radius >= float64(width) {
-			ball.ballVel[0] *= -1
-		}
-		if ball.ballPos[1]-ball.radius <= 0 || ball.ballPos[1]+ball.radius >= float64(height) {
-			ball.ballVel[1] *= -1
-		}
-	}
-	wg.Wait()
-
-	return &gif.GIF{
-		Image: images,
-		Delay: delays,
-	}, nil
 }
