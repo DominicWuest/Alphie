@@ -302,7 +302,7 @@ spec:
     spec:
       containers:
       - name: grpc
-        image: dominicwuest/alphie-grpc:0.1.2
+        image: dominicwuest/alphie-grpc:1.0.0
         resources:
           limits:
             cpu: "3.0"
