@@ -55,6 +55,50 @@ func Init() {
 	cdnConnString = cdnHostname + ":" + cdnPort
 }
 
+// Generates the image from the passed generator
+func GenerateImage(in *pb.ImageRequest, generator ImageGenerator, seed int64) (*pb.ImageResponse, error) {
+	generator, err := generator.Init(seed)
+	if err != nil {
+		return nil, err
+	}
+
+	frames := generator.GetFramesAmount()
+	images := make([]*image.Paletted, frames)
+
+	wg := sync.WaitGroup{}
+	wg.Add(frames)
+
+	width, height := generator.GetContextDimensions()
+	for i := 0; i < frames; i++ {
+		if err = generator.Update(); err != nil {
+			return nil, err
+		}
+
+		context := gg.NewContext(width, height)
+		im, err := generator.Draw(context)
+		if err != nil {
+			return nil, err
+		}
+
+		go insertPalettedFromRGBA(im, i, images, &wg)
+	}
+	wg.Wait()
+
+	delays := createDelayArray(frames)
+	gif := &gif.GIF{
+		Image: images,
+		Delay: delays,
+	}
+
+	postUrl := generator.GetPostURL()
+	path, err := postGIF(postUrl, gif)
+	if err != nil {
+		return nil, err
+	}
+
+	return &pb.ImageResponse{ContentPath: path}, nil
+}
+
 // Init the delays array with the given amount of frames
 func createDelayArray(frames int) []int {
 	delays := make([]int, frames)
@@ -111,48 +155,4 @@ func postGIF(url string, inputGif *gif.GIF) (string, error) {
 	}
 
 	return response.Filename, nil
-}
-
-// Generates the image from the passed generator
-func GenerateImage(in *pb.ImageRequest, generator ImageGenerator, seed int64) (*pb.ImageResponse, error) {
-	generator, err := generator.Init(seed)
-	if err != nil {
-		return nil, err
-	}
-
-	frames := generator.GetFramesAmount()
-	images := make([]*image.Paletted, frames)
-
-	wg := sync.WaitGroup{}
-	wg.Add(frames)
-
-	width, height := generator.GetContextDimensions()
-	for i := 0; i < frames; i++ {
-		if err = generator.Update(); err != nil {
-			return nil, err
-		}
-
-		context := gg.NewContext(width, height)
-		im, err := generator.Draw(context)
-		if err != nil {
-			return nil, err
-		}
-
-		go insertPalettedFromRGBA(im, i, images, &wg)
-	}
-	wg.Wait()
-
-	delays := createDelayArray(frames)
-	gif := &gif.GIF{
-		Image: images,
-		Delay: delays,
-	}
-
-	postUrl := generator.GetPostURL()
-	path, err := postGIF(postUrl, gif)
-	if err != nil {
-		return nil, err
-	}
-
-	return &pb.ImageResponse{ContentPath: path}, nil
 }
