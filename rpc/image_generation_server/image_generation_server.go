@@ -7,15 +7,13 @@ import (
 
 	pb "github.com/DominicWuest/Alphie/rpc/image_generation_server/image_generation_pb"
 	"github.com/DominicWuest/Alphie/rpc/image_generation_server/image_generators"
+
 	"google.golang.org/grpc"
 )
 
+// Struct of the gRPC server
 type ImageGenerationServer struct {
 	pb.UnimplementedImageGenerationServer
-}
-
-type ImageGenerator interface {
-	GenerateImage(int64) (string, error)
 }
 
 // Registers the image generation server and initialises needed variables
@@ -31,17 +29,10 @@ func getSeed(in *pb.ImageRequest) int64 {
 		rand.Seed(time.Now().UnixMilli())
 		seed = rand.Int63()
 	}
-
 	return seed
 }
 
+// Generates an image that bounces a ball around a square
 func (s *ImageGenerationServer) Bounce(ctx context.Context, in *pb.ImageRequest) (*pb.ImageResponse, error) {
-	seed := getSeed(in)
-	var imageGenerator ImageGenerator = &image_generators.Bounce{}
-	path, err := imageGenerator.GenerateImage(seed)
-	if err != nil {
-		return nil, err
-	}
-
-	return &pb.ImageResponse{ContentPath: path}, nil
+	return image_generators.GenerateImage(in, &image_generators.Bounce{}, getSeed(in))
 }
