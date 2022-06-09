@@ -34,5 +34,5 @@ func getSeed(in *pb.ImageRequest) int64 {
 
 // Generates an image that bounces a ball around a square
 func (s *ImageGenerationServer) Bounce(ctx context.Context, in *pb.ImageRequest) (*pb.ImageResponse, error) {
-	return image_generators.GenerateImage(in, image_generators.Bounce{}, getSeed(in))
+	return image_generators.GenerateImage(in, &image_generators.Bounce{}, getSeed(in))
 }

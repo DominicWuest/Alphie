@@ -39,7 +39,7 @@ type ImageGenerator interface {
 
 	// Getters for constants
 	GetFramesAmount() int
-	GetContextDimensions() (int, int)
+	GetContextDimensions() (int, int) // Width x Height
 	GetPostURL() string
 }
 
@@ -59,7 +59,7 @@ func Init() {
 func createDelayArray(frames int) []int {
 	delays := make([]int, frames)
 	for i := 0; i < frames; i++ {
-		delays = append(delays, delay)
+		delays[i] = delay
 	}
 	return delays
 }
@@ -87,7 +87,9 @@ func insertPalettedFromRGBA(img image.Image, index int, images []*image.Paletted
 func postGIF(url string, inputGif *gif.GIF) (string, error) {
 	// Convert GIF to byte buffer
 	gifAsBytes := bytes.NewBuffer([]byte{})
-	gif.EncodeAll(gifAsBytes, inputGif)
+	if err := gif.EncodeAll(gifAsBytes, inputGif); err != nil {
+		return "", err
+	}
 
 	// Send created GIF
 	res, err := http.Post("http://"+cdnConnString+"/"+url, "image/gif", gifAsBytes)
