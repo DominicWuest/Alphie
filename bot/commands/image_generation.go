@@ -26,7 +26,7 @@ type ImageGeneration struct {
 var imageGenerators = map[string](func(context.Context, *pb.ImageRequest, ...grpc.CallOption) (*pb.ImageResponse, error)){}
 
 // How long to wait for gRPC
-const timeout time.Duration = 20 * time.Second
+const timeout time.Duration = 120 * time.Second
 
 func (s *ImageGeneration) HandleCommand(bot *discord.Session, ctx *discord.MessageCreate, args []string) error {
 	if len(args) == 1 {
@@ -94,6 +94,7 @@ func (s ImageGeneration) Init(args ...interface{}) constants.Command {
 
 	// Initialise the generators
 	imageGenerators["bounce"] = s.client.Bounce
+	imageGenerators["fluid"] = s.client.Fluid
 
 	return &s
 }
