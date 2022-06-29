@@ -15,7 +15,7 @@ type Fluid struct {
 	velocityX *[][]float64
 	velocityY *[][]float64
 	// The sources of the fluid
-	sources *[][]float64
+	sources *[]fluidSource
 	// deltaT
 	dt float64
 	// The diffusion constant as defined in the paper
@@ -26,6 +26,12 @@ type Fluid struct {
 	bgColor color.RGBA
 }
 
+type fluidSource struct {
+	x    int
+	y    int
+	rate float64
+}
+
 func (s *Fluid) Init(seed int64) (ImageGenerator, error) {
 	rand.Seed(seed)
 
@@ -33,7 +39,7 @@ func (s *Fluid) Init(seed int64) (ImageGenerator, error) {
 		// How many fluid sources should be distributed over the grid
 		minSources, maxSources int = 3, 20
 		// How much fluid the source produces per time-step
-		minSourceFlow, maxSourceFlow float64 = 0.01, 0.25
+		minSourceFlow, maxSourceFlow float64 = 0.01, 0.05
 
 		minVelocity, maxVelocity float64 = -5, 5
 
@@ -52,10 +58,15 @@ func (s *Fluid) Init(seed int64) (ImageGenerator, error) {
 
 	// Initialise all the fluid sources
 	sourcesCount := rand.Intn(maxSources-minSources) + minSources
-	sources := s.createEmptyMatrix(width+2, height+2)
+	sources := make([]fluidSource, sourcesCount*2)
 	for i := 0; i < sourcesCount; i++ {
 		x, y := rand.Intn(width)+1, rand.Intn(height)+1
-		sources[x][y] += rand.Float64()*(maxSourceFlow-minSourceFlow) + minSourceFlow
+		rate := rand.Float64()*(maxSourceFlow-minSourceFlow) + minSourceFlow
+		sources = append(sources, fluidSource{
+			x:    x,
+			y:    y,
+			rate: rate,
+		})
 	}
 
 	fluid := Fluid{
@@ -161,7 +172,9 @@ func (s *Fluid) backgroundColor(col color.RGBA) color.RGBA {
 }
 
 func (s *Fluid) addSource() {
-
+	for _, source := range *s.sources {
+		(*s.densities)[source.x][source.y] += s.dt * source.rate
+	}
 }
 
 func (s *Fluid) diffuse() {
