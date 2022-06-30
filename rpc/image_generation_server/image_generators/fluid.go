@@ -239,7 +239,9 @@ func (s *Fluid) advect() {
 }
 
 func (s *Fluid) densityStep() {
-
+	s.addSource()
+	s.diffuse()
+	s.advect()
 }
 
 func (s *Fluid) velocityStep() {
