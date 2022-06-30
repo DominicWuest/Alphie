@@ -38,28 +38,27 @@ func (s *Fluid) Init(seed int64) (ImageGenerator, error) {
 
 	const (
 		// How many fluid sources should be distributed over the grid
-		minSources, maxSources int = 3, 20
+		minSources, maxSources int = 15, 25
 		// How much fluid the source produces per time-step
-		minSourceFlow, maxSourceFlow float64 = 0.01, 0.05
+		minSourceFlow, maxSourceFlow float64 = 100, 500
 
-		minVelocity, maxVelocity float64 = -5, 5
+		minVelocity, maxVelocity float64 = 0, 0
 
-		dt float64 = 0.1
+		dt float64 = 0.01
 
-		diff float64 = 0.5
+		diff float64 = 10
 	)
 
 	width, height := s.getGridDimensions()
-	minDensity, maxDensity := s.getDensityInterval()
 
-	densities := s.createRandomMatrix(width+2, height+2, minDensity, maxDensity)
+	densities := s.createEmptyMatrix(width+2, height+2)
 
 	velocityX := s.createRandomMatrix(width+2, height+2, minVelocity, maxVelocity)
 	velocityY := s.createRandomMatrix(width+2, height+2, minVelocity, maxVelocity)
 
 	// Initialise all the fluid sources
 	sourcesCount := rand.Intn(maxSources-minSources) + minSources
-	sources := make([]fluidSource, sourcesCount*2)
+	sources := make([]fluidSource, sourcesCount)
 	for i := 0; i < sourcesCount; i++ {
 		x, y := rand.Intn(width)+1, rand.Intn(height)+1
 		rate := rand.Float64()*(maxSourceFlow-minSourceFlow) + minSourceFlow
@@ -105,7 +104,7 @@ func (s *Fluid) GetFramesAmount() int {
 }
 
 func (s *Fluid) GetContextDimensions() (int, int) {
-	return 50, 50
+	return 150, 100
 }
 
 func (s *Fluid) GetPostURL() string {
@@ -125,8 +124,8 @@ func (s Fluid) createEmptyMatrix(width, height int) [][]float64 {
 
 	matrix := make([][]float64, width)
 
-	for i := 0; i < height; i++ {
-		matrix[i] = arr[i*width : (i+1)*width]
+	for i := 0; i < width; i++ {
+		matrix[i] = arr[i*height : (i+1)*height]
 	}
 
 	return matrix
@@ -185,32 +184,32 @@ func (s *Fluid) diffuse() {
 
 	width, height := s.getGridDimensions()
 
-	a := s.dt * s.diff * float64(width) * float64(height)
+	a := s.dt * s.diff
 
-	nextDensities := *s.densities
+	nextDensities := s.createEmptyMatrix(width+2, height+2)
 	for i := 0; i < gaussSeidelIterations; i++ {
 		for x := 1; x <= width; x++ {
 			for y := 1; y <= height; y++ {
 				nextDensities[x][y] = nextDensities[x+1][y] + nextDensities[x-1][y] + nextDensities[x][y+1] + nextDensities[x][y-1]
 				nextDensities[x][y] *= a
 				nextDensities[x][y] += (*s.densities)[x][y]
-				nextDensities[x][y] /= (1 + 4*a)
+				nextDensities[x][y] /= 1 + 4*a
 			}
 		}
 	}
+	s.densities = &nextDensities
 }
 
 func (s *Fluid) advect() {
 	width, height := s.getGridDimensions()
 
 	dt0 := s.dt * float64(width+height) / 2
+	oldDensities := (*s.densities)
 
 	for x := 1; x <= width; x++ {
-		for y := 1; y <= width; y++ {
+		for y := 1; y <= height; y++ {
 			prevX := float64(x) - dt0*(*s.velocityX)[x][y]
 			prevY := float64(y) - dt0*(*s.velocityY)[x][y]
-
-			oldDensities := (*s.densities)
 
 			if prevX < 0.5 {
 				prevX = 0.5
@@ -221,7 +220,7 @@ func (s *Fluid) advect() {
 			if prevY < 0.5 {
 				prevY = 0.5
 			} else if prevY > float64(height)+0.5 {
-				prevY = float64(width) + 0.5
+				prevY = float64(height) + 0.5
 			}
 
 			// Split prevX into integer and fractional part
@@ -230,9 +229,8 @@ func (s *Fluid) advect() {
 			tmp, fractY := math.Modf(prevY)
 			floorY := int(tmp)
 
-			(*s.densities)[x][y] = fractX * (fractY*oldDensities[floorX][floorY] + (1-fractY)*oldDensities[floorX][floorY+1])
-			(*s.densities)[x][y] += (1 - fractX) * (fractY*oldDensities[floorX+1][floorY] + (1-fractY)*oldDensities[floorX+1][floorY+1])
-			(*s.densities)[x][y] *= dt0
+			(*s.densities)[x][y] = (1 - fractX) * ((1-fractY)*oldDensities[floorX][floorY] + fractY*oldDensities[floorX][floorY+1])
+			(*s.densities)[x][y] += fractX * ((1-fractY)*oldDensities[floorX+1][floorY] + fractY*oldDensities[floorX+1][floorY+1])
 		}
 	}
 
@@ -241,7 +239,7 @@ func (s *Fluid) advect() {
 func (s *Fluid) densityStep() {
 	s.addSource()
 	s.diffuse()
-	s.advect()
+	//s.advect()
 }
 
 func (s *Fluid) velocityStep() {
