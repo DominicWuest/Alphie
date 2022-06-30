@@ -3,6 +3,7 @@ package image_generators
 import (
 	"image"
 	"image/color"
+	"math"
 	"math/rand"
 
 	"github.com/fogleman/gg"
@@ -200,6 +201,40 @@ func (s *Fluid) diffuse() {
 }
 
 func (s *Fluid) advect() {
+	width, height := s.getGridDimensions()
+
+	dt0 := s.dt * float64(width+height) / 2
+
+	for x := 1; x <= width; x++ {
+		for y := 1; y <= width; y++ {
+			prevX := float64(x) - dt0*(*s.velocityX)[x][y]
+			prevY := float64(y) - dt0*(*s.velocityY)[x][y]
+
+			oldDensities := (*s.densities)
+
+			if prevX < 0.5 {
+				prevX = 0.5
+			} else if prevX > float64(width)+0.5 {
+				prevX = float64(width) + 0.5
+			}
+
+			if prevY < 0.5 {
+				prevY = 0.5
+			} else if prevY > float64(height)+0.5 {
+				prevY = float64(width) + 0.5
+			}
+
+			// Split prevX into integer and fractional part
+			tmp, fractX := math.Modf(prevX)
+			floorX := int(tmp)
+			tmp, fractY := math.Modf(prevY)
+			floorY := int(tmp)
+
+			(*s.densities)[x][y] = fractX * (fractY*oldDensities[floorX][floorY] + (1-fractY)*oldDensities[floorX][floorY+1])
+			(*s.densities)[x][y] += (1 - fractX) * (fractY*oldDensities[floorX+1][floorY] + (1-fractY)*oldDensities[floorX+1][floorY+1])
+			(*s.densities)[x][y] *= dt0
+		}
+	}
 
 }
 
