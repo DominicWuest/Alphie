@@ -96,6 +96,27 @@ func (s *Fluid) Update() error {
 }
 
 func (s *Fluid) Draw(ctx *gg.Context) (image.Image, error) {
+	width, height := s.getGridDimensions()
+
+	minDensity, maxDensity := s.getDensityInterval()
+	densityInterval := maxDensity - minDensity
+
+	ctx.SetColor(s.bgColor)
+	ctx.Clear()
+
+	for x := 1; x <= width; x++ {
+		for y := 1; y <= height; y++ {
+			alpha := int(((*s.densities)[x][y] - minDensity) / densityInterval * 255)
+			if alpha > 255 {
+				alpha = 255
+			}
+
+			color := s.fluidColor
+			ctx.SetRGBA255(int(color.R), int(color.G), int(color.B), alpha)
+			ctx.DrawCircle(float64(x-1), float64(y-1), 1)
+			ctx.Fill()
+		}
+	}
 	return ctx.Image(), nil
 }
 
