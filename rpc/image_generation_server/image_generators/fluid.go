@@ -41,11 +41,14 @@ func (s *Fluid) Init(seed int64) (ImageGenerator, error) {
 		// How many fluid sources should be distributed over the grid
 		minSources, maxSources int = 25, 100
 		// How much fluid the source produces per time-step
-		minSourceFlow, maxSourceFlow float64 = 100, 1000
+		minSourceFlow, maxSourceFlow float64 = 500, 1000
 
-		minForce, maxForce float64 = -20, 20
+		minForce, maxForce float64 = -50, 50
 
 		dt float64 = 0.01
+
+		// How many frames to simulate before we start drawing
+		preSimulationSteps int = 24
 	)
 
 	width, height := s.getGridDimensions()
@@ -88,6 +91,12 @@ func (s *Fluid) Init(seed int64) (ImageGenerator, error) {
 	}
 
 	fluid.bgColor = fluid.backgroundColor(fluid.fluidColor)
+
+	for i := 0; i < preSimulationSteps; i++ {
+		if err := fluid.Update(); err != nil {
+			return nil, err
+		}
+	}
 
 	return &fluid, nil
 }
@@ -197,7 +206,7 @@ func (s *Fluid) backgroundColor(col color.RGBA) color.RGBA {
 
 func (s *Fluid) densityStep() {
 	const (
-		diff float64 = 10
+		diff float64 = 50
 	)
 	s.addSource()
 	s.diffuse(s.densities, diff)
@@ -297,5 +306,38 @@ func (s *Fluid) addForce(source [][]float64, dest *[][]float64) {
 }
 
 func (s *Fluid) project() {
+	const (
+		gaussSeidelIterations int = 20
+	)
 
+	width, height := s.getGridDimensions()
+
+	h := 1 / float64(width)
+
+	// Calculate the divergence of the points
+	divergence := s.createEmptyMatrix(width+2, height+2)
+	for x := 1; x <= width; x++ {
+		for y := 1; y <= height; y++ {
+			divergence[x][y] = -0.5 * h * ((*s.velocityX)[x+1][y] - (*s.velocityX)[x-1][y] + (*s.velocityY)[x][y+1] - (*s.velocityY)[x][y-1])
+		}
+	}
+
+	// Calculate the p-values using GaussSeidel relaxation
+	pValues := s.createEmptyMatrix(width+2, height+2)
+	for i := 0; i < gaussSeidelIterations; i++ {
+		for x := 1; x <= width; x++ {
+			for y := 1; y <= height; y++ {
+				pValues[x][y] = divergence[x][y] + pValues[x-1][y] + pValues[x+1][y] + pValues[x][y+1] + pValues[x][y-1]
+				pValues[x][y] /= 4
+			}
+		}
+	}
+
+	// Subtract the gradient from the velocities
+	for x := 1; x <= width; x++ {
+		for y := 1; y <= height; y++ {
+			(*s.velocityX)[x][y] -= 0.5 * (pValues[x+1][y] - pValues[x-1][y]) / h
+			(*s.velocityY)[x][y] -= 0.5 * (pValues[x][y+1] - pValues[x][y-1]) / h
+		}
+	}
 }
