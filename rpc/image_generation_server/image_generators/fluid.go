@@ -178,7 +178,25 @@ func (s *Fluid) addSource() {
 }
 
 func (s *Fluid) diffuse() {
+	const (
+		gaussSeidelIterations int = 20
+	)
 
+	width, height := s.getGridDimensions()
+
+	a := s.dt * s.diff * float64(width) * float64(height)
+
+	nextDensities := *s.densities
+	for i := 0; i < gaussSeidelIterations; i++ {
+		for x := 1; x <= width; x++ {
+			for y := 1; y <= height; y++ {
+				nextDensities[x][y] = nextDensities[x+1][y] + nextDensities[x-1][y] + nextDensities[x][y+1] + nextDensities[x][y-1]
+				nextDensities[x][y] *= a
+				nextDensities[x][y] += (*s.densities)[x][y]
+				nextDensities[x][y] /= (1 + 4*a)
+			}
+		}
+	}
 }
 
 func (s *Fluid) advect() {
