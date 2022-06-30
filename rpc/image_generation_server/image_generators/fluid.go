@@ -207,8 +207,8 @@ func (s *Fluid) densityStep() {
 		diff float64 = 50
 	)
 	s.addSource()
-	s.diffuse(s.densities, diff)
-	s.advect(s.densities, *s.velocityX, *s.velocityY)
+	s.diffuse(s.densities, diff, 0)
+	s.advect(s.densities, *s.velocityX, *s.velocityY, 0)
 }
 
 func (s *Fluid) velocityStep() {
@@ -219,13 +219,13 @@ func (s *Fluid) velocityStep() {
 	s.addForce(*s.forceX, s.velocityX)
 	s.addForce(*s.forceY, s.velocityY)
 
-	s.diffuse(s.forceX, viscosity)
-	s.diffuse(s.forceY, viscosity)
+	s.diffuse(s.forceX, viscosity, 1)
+	s.diffuse(s.forceY, viscosity, 2)
 
 	s.project()
 
-	s.advect(s.velocityX, *s.forceX, *s.forceY)
-	s.advect(s.velocityY, *s.forceX, *s.forceY)
+	s.advect(s.velocityX, *s.forceX, *s.forceY, 1)
+	s.advect(s.velocityY, *s.forceX, *s.forceY, 2)
 
 	s.project()
 }
@@ -236,7 +236,7 @@ func (s *Fluid) addSource() {
 	}
 }
 
-func (s Fluid) diffuse(field *[][]float64, diff float64) {
+func (s Fluid) diffuse(field *[][]float64, diff float64, situation int) {
 	const (
 		gaussSeidelIterations int = 20
 	)
@@ -255,11 +255,12 @@ func (s Fluid) diffuse(field *[][]float64, diff float64) {
 				nextDensities[x][y] /= 1 + 4*a
 			}
 		}
+		s.setBoundary(situation, &nextDensities)
 	}
 	*field = nextDensities
 }
 
-func (s *Fluid) advect(dest *[][]float64, xChange, yChange [][]float64) {
+func (s *Fluid) advect(dest *[][]float64, xChange, yChange [][]float64, situation int) {
 	width, height := s.getGridDimensions()
 
 	dt0 := s.dt * float64(width+height) / 2
@@ -292,7 +293,7 @@ func (s *Fluid) advect(dest *[][]float64, xChange, yChange [][]float64) {
 			(*s.densities)[x][y] += fractX * ((1-fractY)*oldDensities[floorX+1][floorY] + fractY*oldDensities[floorX+1][floorY+1])
 		}
 	}
-
+	s.setBoundary(situation, dest)
 }
 
 func (s *Fluid) addForce(source [][]float64, dest *[][]float64) {
@@ -319,6 +320,7 @@ func (s *Fluid) project() {
 			divergence[x][y] = -0.5 * h * ((*s.velocityX)[x+1][y] - (*s.velocityX)[x-1][y] + (*s.velocityY)[x][y+1] - (*s.velocityY)[x][y-1])
 		}
 	}
+	s.setBoundary(0, &divergence)
 
 	// Calculate the p-values using GaussSeidel relaxation
 	pValues := s.createEmptyMatrix(width+2, height+2)
@@ -329,6 +331,7 @@ func (s *Fluid) project() {
 				pValues[x][y] /= 4
 			}
 		}
+		s.setBoundary(0, &pValues)
 	}
 
 	// Subtract the gradient from the velocities
@@ -338,4 +341,31 @@ func (s *Fluid) project() {
 			(*s.velocityY)[x][y] -= 0.5 * (pValues[x][y+1] - pValues[x][y-1]) / h
 		}
 	}
+	s.setBoundary(1, s.velocityX)
+	s.setBoundary(2, s.velocityY)
+}
+
+func (s Fluid) setBoundary(situation int, target *[][]float64) {
+	width, height := s.getGridDimensions()
+
+	for x := 1; x <= width; x++ {
+		(*target)[x][0] = (*target)[x][1]
+		(*target)[x][height+1] = (*target)[x][height]
+		if situation == 2 {
+			(*target)[x][0] *= -1
+			(*target)[x][height+1] *= -1
+		}
+	}
+	for y := 1; y <= height; y++ {
+		(*target)[0][y] = (*target)[1][y]
+		(*target)[width+1][y] = (*target)[width][y]
+		if situation == 1 {
+			(*target)[0][y] *= -1
+			(*target)[width+1][y] *= -1
+		}
+	}
+	(*target)[0][0] = 0.5 * ((*target)[1][0] + (*target)[0][1])
+	(*target)[0][height+1] = 0.5 * ((*target)[1][height+1] + (*target)[0][height])
+	(*target)[width+1][0] = 0.5 * ((*target)[width][0] + (*target)[width+1][1])
+	(*target)[width+1][height+1] = 0.5 * ((*target)[width][height+1] + (*target)[width+1][height])
 }
