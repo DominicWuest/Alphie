@@ -36,3 +36,8 @@ func getSeed(in *pb.ImageRequest) int64 {
 func (s *ImageGenerationServer) Bounce(ctx context.Context, in *pb.ImageRequest) (*pb.ImageResponse, error) {
 	return image_generators.GenerateImage(in, &image_generators.Bounce{}, getSeed(in))
 }
+
+// Generates a fluid simulation
+func (s *ImageGenerationServer) Fluid(ctx context.Context, in *pb.ImageRequest) (*pb.ImageResponse, error) {
+	return image_generators.GenerateImage(in, &image_generators.Fluid{}, getSeed(in))
+}
