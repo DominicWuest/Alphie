@@ -39,9 +39,9 @@ func (s *Fluid) Init(seed int64) (ImageGenerator, error) {
 
 	const (
 		// How many fluid sources should be distributed over the grid
-		minSources, maxSources int = 25, 100
+		minSources, maxSources int = 25, 50
 		// How much fluid the source produces per time-step
-		minSourceFlow, maxSourceFlow float64 = 500, 1000
+		minSourceFlow, maxSourceFlow float64 = 1000, 2000
 
 		minForce, maxForce float64 = -50, 50
 
@@ -118,13 +118,11 @@ func (s *Fluid) Draw(ctx *gg.Context) (image.Image, error) {
 
 	for x := 1; x <= width; x++ {
 		for y := 1; y <= height; y++ {
-			alpha := int(((*s.densities)[x][y] - minDensity) / densityInterval * 255)
-			if alpha > 255 {
-				alpha = 255
-			}
+			normalisedDensity := 250 * (((*s.densities)[x][y]-minDensity)/densityInterval - (densityInterval / 2))
+			sigmoid := 1 / (1 + math.Exp(-normalisedDensity))
 
 			color := s.fluidColor
-			ctx.SetRGBA255(int(color.R), int(color.G), int(color.B), alpha)
+			ctx.SetRGBA255(int(color.R), int(color.G), int(color.B), int(sigmoid*255))
 			ctx.DrawCircle(float64(x-1), float64(y-1), 1)
 			ctx.Fill()
 		}
