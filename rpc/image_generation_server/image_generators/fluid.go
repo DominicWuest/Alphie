@@ -15,12 +15,13 @@ type Fluid struct {
 	// The components of the fluid's velocity
 	velocityX *[][]float64
 	velocityY *[][]float64
+	// The components of the field's forces
+	forceX *[][]float64
+	forceY *[][]float64
 	// The sources of the fluid
 	sources *[]fluidSource
 	// deltaT
 	dt float64
-	// The diffusion constant as defined in the paper
-	diff float64
 	// The fluid's color
 	fluidColor color.RGBA
 	// The background color
@@ -38,23 +39,24 @@ func (s *Fluid) Init(seed int64) (ImageGenerator, error) {
 
 	const (
 		// How many fluid sources should be distributed over the grid
-		minSources, maxSources int = 15, 25
+		minSources, maxSources int = 25, 100
 		// How much fluid the source produces per time-step
-		minSourceFlow, maxSourceFlow float64 = 100, 500
+		minSourceFlow, maxSourceFlow float64 = 100, 1000
 
-		minVelocity, maxVelocity float64 = 0, 0
+		minForce, maxForce float64 = -20, 20
 
 		dt float64 = 0.01
-
-		diff float64 = 10
 	)
 
 	width, height := s.getGridDimensions()
 
 	densities := s.createEmptyMatrix(width+2, height+2)
 
-	velocityX := s.createRandomMatrix(width+2, height+2, minVelocity, maxVelocity)
-	velocityY := s.createRandomMatrix(width+2, height+2, minVelocity, maxVelocity)
+	velocityX := s.createEmptyMatrix(width+2, height+2)
+	velocityY := s.createEmptyMatrix(width+2, height+2)
+
+	forceX := s.createRandomMatrix(width+2, height+2, minForce, maxForce)
+	forceY := s.createRandomMatrix(width+2, height+2, minForce, maxForce)
 
 	// Initialise all the fluid sources
 	sourcesCount := rand.Intn(maxSources-minSources) + minSources
@@ -73,9 +75,10 @@ func (s *Fluid) Init(seed int64) (ImageGenerator, error) {
 		densities: &densities,
 		velocityX: &velocityX,
 		velocityY: &velocityY,
+		forceX:    &forceX,
+		forceY:    &forceY,
 		sources:   &sources,
 		dt:        dt,
-		diff:      diff,
 		fluidColor: color.RGBA{
 			R: uint8(rand.Uint32()),
 			G: uint8(rand.Uint32()),
@@ -192,20 +195,48 @@ func (s *Fluid) backgroundColor(col color.RGBA) color.RGBA {
 	return brightBackground
 }
 
+func (s *Fluid) densityStep() {
+	const (
+		diff float64 = 10
+	)
+	s.addSource()
+	s.diffuse(s.densities, diff)
+	s.advect(s.densities, *s.velocityX, *s.velocityY)
+}
+
+func (s *Fluid) velocityStep() {
+	const (
+		viscosity float64 = 50
+	)
+
+	s.addForce(*s.forceX, s.velocityX)
+	s.addForce(*s.forceY, s.velocityY)
+
+	s.diffuse(s.forceX, viscosity)
+	s.diffuse(s.forceY, viscosity)
+
+	s.project()
+
+	s.advect(s.velocityX, *s.forceX, *s.forceY)
+	s.advect(s.velocityY, *s.forceX, *s.forceY)
+
+	s.project()
+}
+
 func (s *Fluid) addSource() {
 	for _, source := range *s.sources {
 		(*s.densities)[source.x][source.y] += s.dt * source.rate
 	}
 }
 
-func (s *Fluid) diffuse() {
+func (s Fluid) diffuse(field *[][]float64, diff float64) {
 	const (
 		gaussSeidelIterations int = 20
 	)
 
 	width, height := s.getGridDimensions()
 
-	a := s.dt * s.diff
+	a := s.dt * diff
 
 	nextDensities := s.createEmptyMatrix(width+2, height+2)
 	for i := 0; i < gaussSeidelIterations; i++ {
@@ -213,15 +244,15 @@ func (s *Fluid) diffuse() {
 			for y := 1; y <= height; y++ {
 				nextDensities[x][y] = nextDensities[x+1][y] + nextDensities[x-1][y] + nextDensities[x][y+1] + nextDensities[x][y-1]
 				nextDensities[x][y] *= a
-				nextDensities[x][y] += (*s.densities)[x][y]
+				nextDensities[x][y] += (*field)[x][y]
 				nextDensities[x][y] /= 1 + 4*a
 			}
 		}
 	}
-	s.densities = &nextDensities
+	*field = nextDensities
 }
 
-func (s *Fluid) advect() {
+func (s *Fluid) advect(dest *[][]float64, xChange, yChange [][]float64) {
 	width, height := s.getGridDimensions()
 
 	dt0 := s.dt * float64(width+height) / 2
@@ -257,14 +288,12 @@ func (s *Fluid) advect() {
 
 }
 
-func (s *Fluid) densityStep() {
-	s.addSource()
-	s.diffuse()
-	//s.advect()
-}
-
-func (s *Fluid) velocityStep() {
-
+func (s *Fluid) addForce(source [][]float64, dest *[][]float64) {
+	for i := range source {
+		for j := range source[i] {
+			(*dest)[i][j] += s.dt * source[i][j]
+		}
+	}
 }
 
 func (s *Fluid) project() {
