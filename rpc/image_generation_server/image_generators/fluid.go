@@ -9,6 +9,13 @@ import (
 	"github.com/fogleman/gg"
 )
 
+/*
+ * Generates a fluid simulation in a small contained box
+ * The method of solving the Navier Stokes equations
+ * are from the 2003 paper "Real-Time Fluid Dynamics for Games"
+ * by Jos Stam
+ */
+
 type Fluid struct {
 	// The density of the fluid
 	densities *[][]float64
@@ -118,7 +125,9 @@ func (s *Fluid) Draw(ctx *gg.Context) (image.Image, error) {
 
 	for x := 1; x <= width; x++ {
 		for y := 1; y <= height; y++ {
-			normalisedDensity := 75 * (((*s.densities)[x][y]-minDensity)/densityInterval - (densityInterval / 2))
+			// Multiplication constant to fine-tune polarization of the values after the sigmoid function
+			const densityMultiplier float64 = 50
+			normalisedDensity := densityMultiplier * (((*s.densities)[x][y]-minDensity)/densityInterval - (densityInterval / 2))
 			sigmoid := 1 / (1 + math.Exp(-normalisedDensity))
 
 			color := s.fluidColor
