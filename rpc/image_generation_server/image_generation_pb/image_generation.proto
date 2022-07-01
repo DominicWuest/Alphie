@@ -18,4 +18,6 @@ message ImageResponse {
 service ImageGeneration {
     // Makes a ball bounce around in a square
     rpc Bounce(ImageRequest) returns (ImageResponse) {}
+    // Generates a fluid simulation
+    rpc Fluid(ImageRequest) returns (ImageResponse) {}
 }
