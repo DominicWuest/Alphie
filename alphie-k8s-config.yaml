@@ -241,7 +241,7 @@ spec:
     spec:
       containers:
       - name: bot
-        image: dominicwuest/alphie-bot:0.2.0
+        image: dominicwuest/alphie-bot:0.3.0
         resources:
           limits:
             cpu: "500m"
@@ -302,7 +302,7 @@ spec:
     spec:
       containers:
       - name: grpc
-        image: dominicwuest/alphie-grpc:1.0.0
+        image: dominicwuest/alphie-grpc:1.1.0
         resources:
           limits:
             cpu: "3.0"
