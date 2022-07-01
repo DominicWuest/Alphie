@@ -29,8 +29,8 @@ type Fluid struct {
 }
 
 type fluidSource struct {
-	x    int
-	y    int
+	x    float64
+	y    float64
 	rate float64
 }
 
@@ -39,16 +39,16 @@ func (s *Fluid) Init(seed int64) (ImageGenerator, error) {
 
 	const (
 		// How many fluid sources should be distributed over the grid
-		minSources, maxSources int = 25, 50
+		minSources, maxSources int = 5, 15
 		// How much fluid the source produces per time-step
-		minSourceFlow, maxSourceFlow float64 = 1000, 2000
+		sourceFlow float64 = 150
 
-		minForce, maxForce float64 = -50, 50
+		minForce, maxForce float64 = -10, 10
 
-		dt float64 = 0.01
+		dt float64 = 0.05
 
 		// How many frames to simulate before we start drawing
-		preSimulationSteps int = 24
+		preSimulationSteps int = 5
 	)
 
 	width, height := s.getGridDimensions()
@@ -65,8 +65,8 @@ func (s *Fluid) Init(seed int64) (ImageGenerator, error) {
 	sourcesCount := rand.Intn(maxSources-minSources) + minSources
 	sources := make([]fluidSource, sourcesCount)
 	for i := 0; i < sourcesCount; i++ {
-		x, y := rand.Intn(width)+1, rand.Intn(height)+1
-		rate := rand.Float64()*(maxSourceFlow-minSourceFlow) + minSourceFlow
+		x, y := rand.Float64()*float64(width)+1, rand.Float64()*float64(height)+1
+		rate := sourceFlow
 		sources = append(sources, fluidSource{
 			x:    x,
 			y:    y,
@@ -118,7 +118,7 @@ func (s *Fluid) Draw(ctx *gg.Context) (image.Image, error) {
 
 	for x := 1; x <= width; x++ {
 		for y := 1; y <= height; y++ {
-			normalisedDensity := 250 * (((*s.densities)[x][y]-minDensity)/densityInterval - (densityInterval / 2))
+			normalisedDensity := 75 * (((*s.densities)[x][y]-minDensity)/densityInterval - (densityInterval / 2))
 			sigmoid := 1 / (1 + math.Exp(-normalisedDensity))
 
 			color := s.fluidColor
@@ -131,7 +131,7 @@ func (s *Fluid) Draw(ctx *gg.Context) (image.Image, error) {
 }
 
 func (s *Fluid) GetFramesAmount() int {
-	return 5 * 24 // ~5 seconds of playtime
+	return 7 * 24 // ~7 seconds of playtime
 }
 
 func (s *Fluid) GetContextDimensions() (int, int) {
@@ -204,16 +204,17 @@ func (s *Fluid) backgroundColor(col color.RGBA) color.RGBA {
 
 func (s *Fluid) densityStep() {
 	const (
-		diff float64 = 50
+		diff float64 = 1
 	)
 	s.addSource()
 	s.diffuse(s.densities, diff, 0)
 	s.advect(s.densities, *s.velocityX, *s.velocityY, 0)
+	s.moveSource()
 }
 
 func (s *Fluid) velocityStep() {
 	const (
-		viscosity float64 = 50
+		viscosity float64 = 12
 	)
 
 	s.addForce(*s.forceX, s.velocityX)
@@ -232,7 +233,28 @@ func (s *Fluid) velocityStep() {
 
 func (s *Fluid) addSource() {
 	for _, source := range *s.sources {
-		(*s.densities)[source.x][source.y] += s.dt * source.rate
+		(*s.densities)[int(source.x)][int(source.y)] += s.dt * source.rate
+	}
+}
+
+func (s *Fluid) moveSource() {
+	const (
+		minSourceChange, maxSourceChange float64 = -50, 50
+	)
+
+	width, height := s.getGridDimensions()
+
+	for i := range *s.sources {
+		changeX := s.dt * (rand.Float64()*(maxSourceChange-minSourceChange) + minSourceChange)
+		changeY := s.dt * (rand.Float64()*(maxSourceChange-minSourceChange) + minSourceChange)
+		(*s.sources)[i].x += changeX
+		(*s.sources)[i].y += changeY
+		if (*s.sources)[i].x < 0 || int((*s.sources)[i].x) > width+1 {
+			(*s.sources)[i].x -= 2 * changeX
+		}
+		if (*s.sources)[i].y < 0 || int((*s.sources)[i].y) > height+1 {
+			(*s.sources)[i].y -= 2 * changeY
+		}
 	}
 }
 
@@ -264,12 +286,12 @@ func (s *Fluid) advect(dest *[][]float64, xChange, yChange [][]float64, situatio
 	width, height := s.getGridDimensions()
 
 	dt0 := s.dt * float64(width+height) / 2
-	oldDensities := (*s.densities)
+	oldDest := *dest
 
 	for x := 1; x <= width; x++ {
 		for y := 1; y <= height; y++ {
-			prevX := float64(x) - dt0*(*s.velocityX)[x][y]
-			prevY := float64(y) - dt0*(*s.velocityY)[x][y]
+			prevX := float64(x) - dt0*(xChange)[x][y]
+			prevY := float64(y) - dt0*(yChange)[x][y]
 
 			if prevX < 0.5 {
 				prevX = 0.5
@@ -289,8 +311,8 @@ func (s *Fluid) advect(dest *[][]float64, xChange, yChange [][]float64, situatio
 			tmp, fractY := math.Modf(prevY)
 			floorY := int(tmp)
 
-			(*s.densities)[x][y] = (1 - fractX) * ((1-fractY)*oldDensities[floorX][floorY] + fractY*oldDensities[floorX][floorY+1])
-			(*s.densities)[x][y] += fractX * ((1-fractY)*oldDensities[floorX+1][floorY] + fractY*oldDensities[floorX+1][floorY+1])
+			(*dest)[x][y] = (1 - fractX) * ((1-fractY)*oldDest[floorX][floorY] + fractY*oldDest[floorX][floorY+1])
+			(*dest)[x][y] += fractX * ((1-fractY)*oldDest[floorX+1][floorY] + fractY*oldDest[floorX+1][floorY+1])
 		}
 	}
 	s.setBoundary(situation, dest)
