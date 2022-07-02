@@ -4,6 +4,8 @@ import (
 	"image"
 	"image/color"
 	"math/rand"
+	"os"
+	"strconv"
 
 	"github.com/fogleman/gg"
 )
@@ -103,6 +105,18 @@ func (s *Bounce) GetContextDimensions() (int, int) {
 
 func (s *Bounce) GetPostURL() string {
 	return "bounce"
+}
+
+func (s Bounce) GetQueueCapacity() int {
+	str := os.Getenv("BOUNCE_CAP")
+	if str == "" {
+		return -1
+	}
+	cap, err := strconv.Atoi(str)
+	if err != nil {
+		panic("Invalid value set for BOUNCE_CAP")
+	}
+	return cap
 }
 
 // Returns the background color given the color of the ball
