@@ -15,6 +15,8 @@ import (
 	pb "github.com/DominicWuest/Alphie/rpc/image_generation_server/image_generation_pb"
 	"github.com/andybons/gogif"
 	"github.com/fogleman/gg"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 var cdnHostname string
@@ -23,6 +25,17 @@ var cdnConnString string
 
 // Delay between each frame (results in ~24 FPS)
 const delay int = 100 / 24
+
+// Keeps track of how many jobs are currently being processed
+// And makes sure capacity isn't exceeded
+// Maps from the generator's post url to its channel
+var generatorQueues map[string](chan bool) = make(map[string](chan bool))
+
+// The available generators, used in init
+var generators []ImageGenerator = []ImageGenerator{
+	&Fluid{},
+	&Bounce{},
+}
 
 // Struct for the response we get after posting a GIF to the CDN server
 type postResponse struct {
@@ -41,6 +54,8 @@ type ImageGenerator interface {
 	GetFramesAmount() int
 	GetContextDimensions() (int, int) // Width x Height
 	GetPostURL() string
+	// How many jobs of this generator can run at once
+	GetQueueCapacity() int
 }
 
 // Initialises the constants given by env variables
@@ -53,10 +68,22 @@ func Init() {
 	cdnHostname = hostname
 	cdnPort = port
 	cdnConnString = cdnHostname + ":" + cdnPort
+
+	for _, generator := range generators {
+		cap := generator.GetQueueCapacity()
+		generatorQueues[generator.GetPostURL()] = make(chan bool, cap)
+	}
 }
 
 // Generates the image from the passed generator
 func GenerateImage(in *pb.ImageRequest, generator ImageGenerator, seed int64) (*pb.ImageResponse, error) {
+	// Check if capacity is available
+	queue := generatorQueues[generator.GetPostURL()]
+	select {
+	case queue <- true:
+	default:
+		return nil, status.Error(codes.ResourceExhausted, "queue full")
+	}
 	generator, err := generator.Init(seed)
 	if err != nil {
 		return nil, err
@@ -89,6 +116,9 @@ func GenerateImage(in *pb.ImageRequest, generator ImageGenerator, seed int64) (*
 		Image: images,
 		Delay: delays,
 	}
+
+	// Free up a space in the queue
+	<-generatorQueues[generator.GetPostURL()]
 
 	postUrl := generator.GetPostURL()
 	path, err := postGIF(postUrl, gif)
