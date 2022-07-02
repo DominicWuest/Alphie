@@ -49,5 +49,6 @@ services:
     build: ./rpc
     env_file:
      - .env
+     - grpc.env
     ports:
       - ${GRPC_PORT}:${GRPC_PORT}

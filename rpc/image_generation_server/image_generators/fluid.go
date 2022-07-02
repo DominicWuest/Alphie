@@ -5,6 +5,8 @@ import (
 	"image/color"
 	"math"
 	"math/rand"
+	"os"
+	"strconv"
 
 	"github.com/fogleman/gg"
 )
@@ -149,6 +151,18 @@ func (s *Fluid) GetContextDimensions() (int, int) {
 
 func (s *Fluid) GetPostURL() string {
 	return "fluid"
+}
+
+func (s Fluid) GetQueueCapacity() int {
+	str := os.Getenv("FLUID_CAP")
+	if str == "" {
+		return -1
+	}
+	cap, err := strconv.Atoi(str)
+	if err != nil {
+		panic("Invalid value set for FLUID_CAP")
+	}
+	return cap
 }
 
 func (s Fluid) getGridDimensions() (int, int) {
