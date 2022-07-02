@@ -117,11 +117,12 @@ func GenerateImage(in *pb.ImageRequest, generator ImageGenerator, seed int64) (*
 		Delay: delays,
 	}
 
+	postUrl := generator.GetPostURL()
+	path, err := postGIF(postUrl, gif)
+
 	// Free up a space in the queue
 	<-generatorQueues[generator.GetPostURL()]
 
-	postUrl := generator.GetPostURL()
-	path, err := postGIF(postUrl, gif)
 	if err != nil {
 		return nil, err
 	}
