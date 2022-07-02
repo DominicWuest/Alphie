@@ -77,8 +77,9 @@ func Init() {
 
 // Generates the image from the passed generator
 func GenerateImage(in *pb.ImageRequest, generator ImageGenerator, seed int64) (*pb.ImageResponse, error) {
+	postUrl := generator.GetPostURL()
 	// Check if capacity is available
-	queue := generatorQueues[generator.GetPostURL()]
+	queue := generatorQueues[postUrl]
 	select {
 	case queue <- true:
 	default:
@@ -117,11 +118,10 @@ func GenerateImage(in *pb.ImageRequest, generator ImageGenerator, seed int64) (*
 		Delay: delays,
 	}
 
-	postUrl := generator.GetPostURL()
 	path, err := postGIF(postUrl, gif)
 
 	// Free up a space in the queue
-	<-generatorQueues[generator.GetPostURL()]
+	<-generatorQueues[postUrl]
 
 	if err != nil {
 		return nil, err
