@@ -10,7 +10,9 @@ import (
 
 	"github.com/DominicWuest/Alphie/bot/constants"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
 
 	pb "github.com/DominicWuest/Alphie/bot/commands/image_generation"
 
@@ -55,6 +57,12 @@ func (s *ImageGeneration) HandleCommand(bot *discord.Session, ctx *discord.Messa
 	}
 	res, err := fun(timeoutCtx, req)
 	if err != nil {
+		status, _ := status.FromError(err)
+		// Job queue full
+		if status.Code() == codes.ResourceExhausted {
+			bot.ChannelMessageSendReply(ctx.ChannelID, "Sorry, the job queue for this image generator is currently full, please try again later.", ctx.Message.Reference())
+			return nil
+		}
 		return err
 	}
 

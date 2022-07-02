@@ -60,6 +60,8 @@ metadata:
 data:
   GRPC_HOSTNAME: grpc # Name of the ClusterIP of the alphie-grpc service
   GRPC_PORT: "2003"
+  BOUNCE_CAP: "3"
+  FLUID_CAP: "1"
 --- # Ingress service
 apiVersion: networking.k8s.io/v1
 kind: Ingress
@@ -241,7 +243,7 @@ spec:
     spec:
       containers:
       - name: bot
-        image: dominicwuest/alphie-bot:0.3.0
+        image: dominicwuest/alphie-bot:0.3.1
         resources:
           limits:
             cpu: "500m"
@@ -302,7 +304,7 @@ spec:
     spec:
       containers:
       - name: grpc
-        image: dominicwuest/alphie-grpc:1.1.0
+        image: dominicwuest/alphie-grpc:1.2.0
         resources:
           limits:
             cpu: "3.0"
