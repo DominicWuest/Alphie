@@ -139,7 +139,7 @@ func (s ImageGeneration) Desc() string {
 }
 
 func (s ImageGeneration) Help() string {
-	return "Available commands: `image [help|bounce] [seed]`\nThe seed is optional. If no seed is specified, a random one will be chosen by Alphie."
+	return "Available commands: `image [help|bounce|fluid] [seed]`\nThe seed is optional. If no seed is specified, a random one will be chosen by Alphie."
 }
 
 func (s ImageGeneration) Init(args ...interface{}) constants.Command {
