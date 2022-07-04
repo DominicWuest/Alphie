@@ -7,6 +7,7 @@ import (
 	"math/rand"
 	"os"
 	"strconv"
+	"sync"
 
 	"github.com/fogleman/gg"
 )
@@ -240,16 +241,33 @@ func (s *Fluid) velocityStep() {
 		viscosity float64 = 12
 	)
 
-	s.addForce(*s.forceX, s.velocityX)
-	s.addForce(*s.forceY, s.velocityY)
+	wg := sync.WaitGroup{}
+	wg.Add(1)
 
-	s.diffuse(s.forceX, viscosity, 1)
+	go func() {
+		s.addForce(*s.forceX, s.velocityX)
+		wg.Done()
+	}()
+	s.addForce(*s.forceY, s.velocityY)
+	wg.Wait()
+
+	wg.Add(1)
+	go func() {
+		s.diffuse(s.forceX, viscosity, 1)
+		wg.Done()
+	}()
 	s.diffuse(s.forceY, viscosity, 2)
+	wg.Wait()
 
 	s.project()
 
-	s.advect(s.velocityX, *s.forceX, *s.forceY, 1)
+	wg.Add(1)
+	go func() {
+		s.advect(s.velocityX, *s.forceX, *s.forceY, 1)
+		wg.Done()
+	}()
 	s.advect(s.velocityY, *s.forceX, *s.forceY, 2)
+	wg.Wait()
 
 	s.project()
 }
@@ -283,7 +301,7 @@ func (s *Fluid) moveSource() {
 
 func (s Fluid) diffuse(field *[][]float64, diff float64, situation int) {
 	const (
-		gaussSeidelIterations int = 20
+		gaussSeidelIterations int = 10
 	)
 
 	width, height := s.getGridDimensions()
@@ -351,7 +369,7 @@ func (s *Fluid) addForce(source [][]float64, dest *[][]float64) {
 
 func (s *Fluid) project() {
 	const (
-		gaussSeidelIterations int = 20
+		gaussSeidelIterations int = 10
 	)
 
 	width, height := s.getGridDimensions()
