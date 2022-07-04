@@ -28,24 +28,47 @@ type ImageGeneration struct {
 var imageGenerators = map[string](func(context.Context, *pb.ImageRequest, ...grpc.CallOption) (*pb.ImageResponse, error)){}
 
 // How long to wait for gRPC
-const timeout time.Duration = 120 * time.Second
+var timeouts = map[string]time.Duration{}
 
 func (s *ImageGeneration) HandleCommand(bot *discord.Session, ctx *discord.MessageCreate, args []string) error {
 	if len(args) == 1 {
 		bot.ChannelMessageSend(ctx.ChannelID, s.Help())
 		return nil
 	}
+	reqType := args[1]
+
 	fun, found := imageGenerators[args[1]]
-	if !found || args[1] == "help" {
+	if !found || reqType == "help" {
 		bot.ChannelMessageSend(ctx.ChannelID, s.Help())
 		return nil
 	}
 	bot.MessageReactionAdd(ctx.ChannelID, ctx.ID, constants.Emojis["success"])
 
-	timeoutCtx, cancel := context.WithTimeout(context.Background(), timeout)
+	timeoutCtx, cancel := context.WithTimeout(context.Background(), timeouts[reqType])
 	defer cancel()
 
 	req := &pb.ImageRequest{}
+
+	embed := &discord.MessageEmbed{
+		Author: &discord.MessageEmbedAuthor{
+			Name: "Status: Processing",
+		},
+		Fields: []*discord.MessageEmbedField{
+			{
+				Name:  "Image Generation of " + strings.ToLower(reqType),
+				Value: "Timeout after " + timeouts[reqType].String(),
+			},
+		},
+		Footer: &discord.MessageEmbedFooter{
+			Text:    "Invoked by " + ctx.Author.Username,
+			IconURL: ctx.Author.AvatarURL(""),
+		},
+	}
+
+	msg, err := bot.ChannelMessageSendEmbed(ctx.ChannelID, embed)
+	if err != nil {
+		return err
+	}
 
 	// Seed set
 	if len(args) > 2 {
@@ -57,18 +80,41 @@ func (s *ImageGeneration) HandleCommand(bot *discord.Session, ctx *discord.Messa
 	}
 	res, err := fun(timeoutCtx, req)
 	if err != nil {
+		if timeoutCtx.Err() == context.DeadlineExceeded {
+			embed.Author = &discord.MessageEmbedAuthor{
+				Name: "Status: Error",
+			}
+			embed.Fields = append(embed.Fields, &discord.MessageEmbedField{
+				Name:  "Request Timed Out",
+				Value: "Your request for the image generation timed out, please try again later.",
+			})
+			bot.ChannelMessageEditEmbed(msg.ChannelID, msg.ID, embed)
+			return nil
+		}
 		status, _ := status.FromError(err)
 		// Job queue full
 		if status.Code() == codes.ResourceExhausted {
-			bot.ChannelMessageSendReply(ctx.ChannelID, "Sorry, the job queue for this image generator is currently full, please try again later.", ctx.Message.Reference())
+			embed.Author = &discord.MessageEmbedAuthor{
+				Name: "Status: Error",
+			}
+			embed.Fields = append(embed.Fields, &discord.MessageEmbedField{
+				Name:  "Resource Exhausted",
+				Value: "Sorry, the job queue for this image generator is currently full, please try again later.",
+			})
+			bot.ChannelMessageEditEmbed(msg.ChannelID, msg.ID, embed)
 			return nil
 		}
 		return err
 	}
 
 	url := res.GetContentPath()
-	// Intentionally don't send result if user deleted their message
-	bot.ChannelMessageSendReply(ctx.ChannelID, "http://"+s.cdnUrl+url, ctx.Message.Reference())
+	embed.Author = &discord.MessageEmbedAuthor{
+		Name: "Status: Finished",
+	}
+	embed.Image = &discord.MessageEmbedImage{
+		URL: "http://" + s.cdnUrl + url,
+	}
+	bot.ChannelMessageEditEmbed(msg.ChannelID, msg.ID, embed)
 
 	return nil
 }
@@ -103,6 +149,9 @@ func (s ImageGeneration) Init(args ...interface{}) constants.Command {
 	// Initialise the generators
 	imageGenerators["bounce"] = s.client.Bounce
 	imageGenerators["fluid"] = s.client.Fluid
+
+	timeouts["bounce"] = 45 * time.Second
+	timeouts["fluid"] = 180 * time.Second
 
 	return &s
 }
