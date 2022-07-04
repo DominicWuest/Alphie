@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto"
 	"fmt"
+	"log"
 	"os"
 	"strings"
 	"time"
@@ -84,6 +85,7 @@ func (s *ImageGeneration) HandleCommand(bot *discord.Session, ctx *discord.Messa
 	res, err := fun(timeoutCtx, req)
 	if err != nil {
 		if timeoutCtx.Err() == context.DeadlineExceeded {
+			log.Println(constants.Yellow, "Timed out generation of", reqType, "for", ctx.Author.Username)
 			embed.Author = &discord.MessageEmbedAuthor{
 				Name: "Status: Error",
 			}
@@ -97,6 +99,7 @@ func (s *ImageGeneration) HandleCommand(bot *discord.Session, ctx *discord.Messa
 		status, _ := status.FromError(err)
 		// Job queue full
 		if status.Code() == codes.ResourceExhausted {
+			log.Println(constants.Yellow, "Resource exhaustion for generation of", reqType, "for", ctx.Author.Username)
 			embed.Author = &discord.MessageEmbedAuthor{
 				Name: "Status: Error",
 			}
@@ -113,6 +116,7 @@ func (s *ImageGeneration) HandleCommand(bot *discord.Session, ctx *discord.Messa
 	processingTime := time.Since(startTime).Round(time.Second)
 
 	url := res.GetContentPath()
+	url = "http://" + s.cdnUrl + url
 	embed.Author = &discord.MessageEmbedAuthor{
 		Name: "Status: Finished",
 	}
@@ -121,9 +125,11 @@ func (s *ImageGeneration) HandleCommand(bot *discord.Session, ctx *discord.Messa
 		Value: processingTime.String(),
 	})
 	embed.Image = &discord.MessageEmbedImage{
-		URL: "http://" + s.cdnUrl + url,
+		URL: url,
 	}
 	bot.ChannelMessageEditEmbed(msg.ChannelID, msg.ID, embed)
+
+	log.Println(constants.Yellow, "Finished generation of", reqType, "for", ctx.Author.Username, "in", processingTime, ". URL: ", url)
 
 	return nil
 }
