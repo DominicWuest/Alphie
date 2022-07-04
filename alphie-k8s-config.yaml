@@ -243,7 +243,7 @@ spec:
     spec:
       containers:
       - name: bot
-        image: dominicwuest/alphie-bot:0.3.1
+        image: dominicwuest/alphie-bot:0.3.2
         resources:
           limits:
             cpu: "500m"
