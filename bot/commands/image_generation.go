@@ -78,6 +78,9 @@ func (s *ImageGeneration) HandleCommand(bot *discord.Session, ctx *discord.Messa
 		seed := int64(sum[0]) | (int64(sum[1]) << 8) | (int64(sum[2]) << 16) | (int64(sum[3]) << 24)
 		req = &pb.ImageRequest{Seed: &seed}
 	}
+
+	startTime := time.Now()
+
 	res, err := fun(timeoutCtx, req)
 	if err != nil {
 		if timeoutCtx.Err() == context.DeadlineExceeded {
@@ -107,10 +110,16 @@ func (s *ImageGeneration) HandleCommand(bot *discord.Session, ctx *discord.Messa
 		return err
 	}
 
+	processingTime := time.Since(startTime).Round(time.Second)
+
 	url := res.GetContentPath()
 	embed.Author = &discord.MessageEmbedAuthor{
 		Name: "Status: Finished",
 	}
+	embed.Fields = append(embed.Fields, &discord.MessageEmbedField{
+		Name:  "Finished in",
+		Value: processingTime.String(),
+	})
 	embed.Image = &discord.MessageEmbedImage{
 		URL: "http://" + s.cdnUrl + url,
 	}
