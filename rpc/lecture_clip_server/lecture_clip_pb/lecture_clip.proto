@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package lecture_clip;
+
+option go_package = "github.com/DominicWuest/Alphie/rpc/lecture_clip/pb;pb";
+
+message ClipRequest {
+    // The ID of the lecture to clip (ID taken from VVZ)
+    // May be omitted to make a clip of all current lectures
+    optional string lecture_id = 1;
+}
+
+message Clip {
+    // The ID of the clipped lecture
+    string id = 1;
+    // The path where the clips got stored at
+    string content_path = 2;
+}
+
+message ClipResponse {
+    // All created clips and where they were stored
+    repeated Clip clips = 1;
+}
+
+service LectureClip {
+    // Captures and stores the clip
+    rpc Clip(ClipRequest) returns (ClipResponse) {}
+}

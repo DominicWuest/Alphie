@@ -8,6 +8,7 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/DominicWuest/Alphie/rpc/image_generation_server"
+	"github.com/DominicWuest/Alphie/rpc/lecture_clip_server"
 )
 
 // Creates the server to listen for gRPC requests
@@ -21,6 +22,7 @@ func main() {
 	grpcServer := grpc.NewServer()
 
 	image_generation_server.Register(grpcServer)
+	lecture_clip_server.Register(grpcServer)
 
 	if err := grpcServer.Serve(listener); err != nil {
 		log.Fatalf("Failed to serve gRPC: %v", err)
