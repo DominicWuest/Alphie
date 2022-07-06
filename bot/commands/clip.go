@@ -42,7 +42,34 @@ func (s *Clip) HandleCommand(bot *discord.Session, ctx *discord.MessageCreate, a
 		return err
 	}
 
-	fmt.Println(res)
+	embed := &discord.MessageEmbed{
+		Author: &discord.MessageEmbedAuthor{
+			Name: "Lecture Clip",
+		},
+		Footer: &discord.MessageEmbedFooter{
+			Text:    "Invoked by " + ctx.Author.Username,
+			IconURL: ctx.Author.AvatarURL(""),
+		},
+	}
+
+	// No clips were created, as no active lectures
+	if len(res.Clips) == 0 {
+		embed.Fields = []*discord.MessageEmbedField{
+			{
+				Name:  "No active lectures.",
+				Value: "No clips were created.",
+			},
+		}
+	}
+
+	for _, clip := range res.Clips {
+		embed.Fields = append(embed.Fields, &discord.MessageEmbedField{
+			Name:  clip.GetId(),
+			Value: clip.GetContentPath(),
+		})
+	}
+
+	bot.ChannelMessageSendEmbed(ctx.ChannelID, embed)
 
 	return nil
 }
