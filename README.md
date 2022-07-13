@@ -15,6 +15,10 @@ Before running Alphie, a few environment variables have to be set in `bot.env`:
 And in `.env`:
 * `POSTGRES_PASSWORD`: The password for accessing the database.
 
+Also, you need the URL for the lecture streams, which I will give you if you DM me and are a student at ETH.\
+The link you'll get must then be added in `grpc.env`:
+* `LECTURE_CLIP_BASE_URL`: The base URL for the lecture streams.
+
 The HOME_GUILD should have an emote named ":alph:".
 
 Additionally, the gRPC proto files have to be generated. This can be done by changing to the `rpc` directory and running `make gen`.
