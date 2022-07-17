@@ -44,15 +44,26 @@ const (
 	clipFragmentCacheLength int = 180
 )
 
-// Registers the image generation server and initialises needed variables
+// Registers the lecture clip server and initialises needed variables
 func Register(srv *grpc.Server) {
 	lectureClipBaseUrl := os.Getenv("LECTURE_CLIP_BASE_URL")
 	if lectureClipBaseUrl == "" {
 		panic("LECTURE_CLIP_BASE_URL environment variable not set")
 	}
+
+	activeClippers := make(map[string]*lectureClipper)
+	activeClippers["test"] = &lectureClipper{ // Temporary, used for testing
+		roomUrl: "hg-d-1-1",
+	}
+	go func(clipper *lectureClipper) {
+		fmt.Println("Starting test clipper")
+		go clipper.startRecording()
+		// No graceful shutdown yet, to be implemented
+	}(activeClippers["test"])
+
 	pb.RegisterLectureClipServer(srv, &LectureClipServer{
 		lectureClipBaseUrl: lectureClipBaseUrl,
-		activeClippers:     make(map[string]*lectureClipper),
+		activeClippers:     activeClippers,
 	})
 }
 
