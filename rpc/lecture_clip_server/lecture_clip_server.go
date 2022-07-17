@@ -5,6 +5,7 @@ import (
 	"context"
 	"os"
 	"sync"
+	"time"
 
 	pb "github.com/DominicWuest/Alphie/rpc/lecture_clip_server/lecture_clip_pb"
 
@@ -14,8 +15,6 @@ import (
 // Struct of the gRPC server
 type LectureClipServer struct {
 	pb.UnimplementedLectureClipServer
-	// Used to shut down service
-	clipping bool
 	// Base url to send requests to for video fragments
 	lectureClipBaseUrl string
 	// Active clippers currently tracking active lectures
@@ -27,6 +26,8 @@ type lectureClipper struct {
 	lectureId string
 	// Where to send requests to for the video fragments
 	roomUrl string
+	// Used to stop clipper
+	recording bool
 	// Buffer holding the recent video fragments for the clip
 	buffer *bytes.Buffer
 	// Mutex for the buffer to ensure no new fragments are added while reading the buffer for sending
@@ -34,6 +35,11 @@ type lectureClipper struct {
 	// Current position in the buffer
 	bufferPos int
 }
+
+const (
+	// How many video fragments should be cached, decides lectureClipper buffer size
+	clipFragmentCacheLength int = 180
+)
 
 // Registers the image generation server and initialises needed variables
 func Register(srv *grpc.Server) {
@@ -43,7 +49,6 @@ func Register(srv *grpc.Server) {
 	}
 	pb.RegisterLectureClipServer(srv, &LectureClipServer{
 		lectureClipBaseUrl: lectureClipBaseUrl,
-		clipping:           true,
 		activeClippers:     make([]*lectureClipper, 0),
 	})
 }
@@ -53,11 +58,26 @@ func (s *LectureClipServer) Clip(ctx context.Context, in *pb.ClipRequest) (*pb.C
 }
 
 // Should be called as a goroutine, starts recording for the clips
-func (s *lectureClipper) record() error {
+func (s *lectureClipper) startRecording() error {
+	// Reset the clipper
+	s.buffer = bytes.NewBuffer(make([]byte, clipFragmentCacheLength))
+	s.bufferPos = 0
+	s.recording = true
+
+	for s.recording {
+		time.Sleep(time.Second) // Temporary until logic is implemented
+	}
+
+	return nil
+}
+
+// Stops the clippers recording
+func (s *lectureClipper) stopRecording() error {
+	s.recording = false
 	return nil
 }
 
 // Creates the clip and returns the url where it was stored
-func (s *lectureClipper) clip() (string, error) {
+func (s *lectureClipper) clip(id string) (string, error) {
 	return "", nil
 }
