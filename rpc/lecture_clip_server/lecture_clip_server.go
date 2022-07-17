@@ -10,6 +10,8 @@ import (
 	pb "github.com/DominicWuest/Alphie/rpc/lecture_clip_server/lecture_clip_pb"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // Struct of the gRPC server
@@ -18,7 +20,7 @@ type LectureClipServer struct {
 	// Base url to send requests to for video fragments
 	lectureClipBaseUrl string
 	// Active clippers currently tracking active lectures
-	activeClippers []*lectureClipper
+	activeClippers map[string]*lectureClipper
 }
 
 type lectureClipper struct {
@@ -49,12 +51,41 @@ func Register(srv *grpc.Server) {
 	}
 	pb.RegisterLectureClipServer(srv, &LectureClipServer{
 		lectureClipBaseUrl: lectureClipBaseUrl,
-		activeClippers:     make([]*lectureClipper, 0),
+		activeClippers:     make(map[string]*lectureClipper),
 	})
 }
 
 func (s *LectureClipServer) Clip(ctx context.Context, in *pb.ClipRequest) (*pb.ClipResponse, error) {
-	return &pb.ClipResponse{}, nil
+	clips := []*pb.Clip{}
+	if in.LectureId == nil { // Clip all lectures
+		for clipperId, clipper := range s.activeClippers {
+			clipUrl, err := clipper.clip()
+			if err != nil {
+				return nil, err
+			}
+			clips = append(clips, &pb.Clip{
+				Id:          clipperId,
+				ContentPath: clipUrl,
+			})
+		}
+	} else { // Clip specific lecture
+		clipper, found := s.activeClippers[in.GetLectureId()]
+		if !found {
+			return nil, status.Error(codes.InvalidArgument, "invalid lecture ID")
+		}
+		clipUrl, err := clipper.clip()
+		if err != nil {
+			return nil, err
+		}
+		clips = append(clips, &pb.Clip{
+			Id:          in.GetLectureId(),
+			ContentPath: clipUrl,
+		})
+	}
+
+	return &pb.ClipResponse{
+		Clips: clips,
+	}, nil
 }
 
 // Should be called as a goroutine, starts recording for the clips
@@ -78,6 +109,6 @@ func (s *lectureClipper) stopRecording() error {
 }
 
 // Creates the clip and returns the url where it was stored
-func (s *lectureClipper) clip(id string) (string, error) {
+func (s *lectureClipper) clip() (string, error) {
 	return "", nil
 }
