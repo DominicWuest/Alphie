@@ -1,7 +1,6 @@
 package lecture_clip_server
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -34,7 +33,7 @@ type lectureClipper struct {
 	// Used to confirm the clipper stopped
 	stopped bool
 	// Cache holding the recent video fragments for the clip
-	cache *bytes.Buffer
+	cache *[]*byte
 	// Position of the next entry to the cache, with the index being cachePos % len(cache)
 	cachePos int
 }
@@ -103,7 +102,8 @@ func (s *LectureClipServer) Clip(ctx context.Context, in *pb.ClipRequest) (*pb.C
 // Should be called as a goroutine, starts recording for the clips
 func (s *lectureClipper) startRecording() error {
 	// Reset the clipper
-	s.cache = bytes.NewBuffer(make([]byte, clipFragmentCacheLength))
+	newCache := make([]*byte, clipFragmentCacheLength)
+	s.cache = &newCache
 	s.cachePos = 0
 	s.recording = true
 
@@ -140,7 +140,7 @@ func (s *lectureClipper) clip() (string, error) {
 	s.Lock()
 
 	// Make local copy of needed attributes
-	cache := s.cache.Bytes()
+	cache := *s.cache
 	clipEnd := s.cachePos
 
 	s.Unlock()
