@@ -3,6 +3,7 @@ package lecture_clip_server
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"os"
 	"sync"
 	"time"
@@ -30,6 +31,8 @@ type lectureClipper struct {
 	roomUrl string
 	// Used to stop clipper
 	recording bool
+	// Used to confirm the clipper stopped
+	stopped bool
 	// Buffer holding the recent video fragments for the clip
 	buffer *bytes.Buffer
 	// Mutex for the buffer to ensure no new fragments are added while reading the buffer for sending
@@ -98,6 +101,7 @@ func (s *lectureClipper) startRecording() error {
 	for s.recording {
 		time.Sleep(time.Second) // Temporary until logic is implemented
 	}
+	s.stopped = true
 
 	return nil
 }
@@ -105,6 +109,19 @@ func (s *lectureClipper) startRecording() error {
 // Stops the clippers recording
 func (s *lectureClipper) stopRecording() error {
 	s.recording = false
+	// Make sure the recorder has stopped
+	waitCounter := 50
+	waitDuration := 100 * time.Millisecond
+
+	for !s.stopped && waitCounter > 0 {
+		time.Sleep(waitDuration)
+		waitCounter--
+	}
+
+	if waitCounter == 0 {
+		return fmt.Errorf("failed to stop recording of %s (timed out)", s.lectureId)
+	}
+
 	return nil
 }
 
