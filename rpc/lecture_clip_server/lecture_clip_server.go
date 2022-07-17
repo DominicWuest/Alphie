@@ -25,20 +25,18 @@ type LectureClipServer struct {
 }
 
 type lectureClipper struct {
-	// ID identifying the lecture that is being clipped
-	lectureId string
+	// To ensure consistency between clipping and recording
+	sync.Mutex
 	// Where to send requests to for the video fragments
 	roomUrl string
 	// Used to stop clipper
 	recording bool
 	// Used to confirm the clipper stopped
 	stopped bool
-	// Buffer holding the recent video fragments for the clip
-	buffer *bytes.Buffer
-	// Mutex for the buffer to ensure no new fragments are added while reading the buffer for sending
-	bufferMutex *sync.Mutex
-	// Current position in the buffer
-	bufferPos int
+	// Cache holding the recent video fragments for the clip
+	cache *bytes.Buffer
+	// Position of the next entry to the cache, with the index being cachePos % len(cache)
+	cachePos int
 }
 
 const (
@@ -94,8 +92,8 @@ func (s *LectureClipServer) Clip(ctx context.Context, in *pb.ClipRequest) (*pb.C
 // Should be called as a goroutine, starts recording for the clips
 func (s *lectureClipper) startRecording() error {
 	// Reset the clipper
-	s.buffer = bytes.NewBuffer(make([]byte, clipFragmentCacheLength))
-	s.bufferPos = 0
+	s.cache = bytes.NewBuffer(make([]byte, clipFragmentCacheLength))
+	s.cachePos = 0
 	s.recording = true
 
 	for s.recording {
@@ -119,7 +117,7 @@ func (s *lectureClipper) stopRecording() error {
 	}
 
 	if waitCounter == 0 {
-		return fmt.Errorf("failed to stop recording of %s (timed out)", s.lectureId)
+		return fmt.Errorf("failed to stop recording of %s (timed out)", s.roomUrl)
 	}
 
 	return nil
@@ -127,5 +125,28 @@ func (s *lectureClipper) stopRecording() error {
 
 // Creates the clip and returns the url where it was stored
 func (s *lectureClipper) clip() (string, error) {
+	// Capturing the clip
+	s.Lock()
+
+	// Make local copy of needed attributes
+	cache := s.cache.Bytes()
+	clipEnd := s.cachePos
+
+	s.Unlock()
+
+	clipStart := clipEnd - len(cache)
+	if clipStart < 0 { // Ensure we don't read unwritten entries
+		clipStart = 0
+	}
+
+	// Stick fragments together
+	for i := clipStart; i < clipEnd; i++ {
+		fragment := cache[i%len(cache)]
+
+		fmt.Println(fragment) // Temporary, suppress unused error
+	}
+
+	// Post the clip to the CDN
+
 	return "", nil
 }
