@@ -9,7 +9,9 @@ import (
 
 	"github.com/DominicWuest/Alphie/bot/constants"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
 
 	pb "github.com/DominicWuest/Alphie/bot/commands/clip"
 
@@ -37,11 +39,6 @@ func (s *Clip) HandleCommand(bot *discord.Session, ctx *discord.MessageCreate, a
 		req.LectureId = &args[1]
 	}
 
-	res, err := s.client.Clip(timeoutCtx, req)
-	if err != nil {
-		return err
-	}
-
 	embed := &discord.MessageEmbed{
 		Author: &discord.MessageEmbedAuthor{
 			Name: "Lecture Clip",
@@ -52,21 +49,36 @@ func (s *Clip) HandleCommand(bot *discord.Session, ctx *discord.MessageCreate, a
 		},
 	}
 
-	// No clips were created, as no active lectures
-	if len(res.Clips) == 0 {
-		embed.Fields = []*discord.MessageEmbedField{
-			{
-				Name:  "No active lectures.",
-				Value: "No clips were created.",
-			},
+	res, err := s.client.Clip(timeoutCtx, req)
+	if err != nil {
+		// Invalid ID supplied
+		if status.Code(err) == codes.InvalidArgument {
+			embed.Fields = []*discord.MessageEmbedField{
+				{
+					Name:  "Invalid ID supplied.",
+					Value: "No clips were created.",
+				},
+			}
+		} else {
+			return err
 		}
-	}
+	} else {
+		// No clips were created, as no active lectures
+		if len(res.Clips) == 0 {
+			embed.Fields = []*discord.MessageEmbedField{
+				{
+					Name:  "No active lectures.",
+					Value: "No clips were created.",
+				},
+			}
+		}
 
-	for _, clip := range res.Clips {
-		embed.Fields = append(embed.Fields, &discord.MessageEmbedField{
-			Name:  clip.GetId(),
-			Value: clip.GetContentPath(),
-		})
+		for _, clip := range res.Clips {
+			embed.Fields = append(embed.Fields, &discord.MessageEmbedField{
+				Name:  clip.GetId(),
+				Value: clip.GetContentPath(),
+			})
+		}
 	}
 
 	bot.ChannelMessageSendEmbed(ctx.ChannelID, embed)
