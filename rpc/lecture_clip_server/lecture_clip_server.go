@@ -3,12 +3,14 @@ package lecture_clip_server
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"sync"
 	"time"
 
 	pb "github.com/DominicWuest/Alphie/rpc/lecture_clip_server/lecture_clip_pb"
 
+	"github.com/quangngotan95/go-m3u8/m3u8"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -36,6 +38,8 @@ type lectureClipper struct {
 	cache *[]*byte
 	// Position of the next entry to the cache, with the index being cachePos % len(cache)
 	cachePos int
+	// The last media sequence number captured
+	seqNum int
 }
 
 const (
@@ -43,9 +47,11 @@ const (
 	clipFragmentCacheLength int = 180
 )
 
+var lectureClipBaseUrl string
+
 // Registers the lecture clip server and initialises needed variables
 func Register(srv *grpc.Server) {
-	lectureClipBaseUrl := os.Getenv("LECTURE_CLIP_BASE_URL")
+	lectureClipBaseUrl = os.Getenv("LECTURE_CLIP_BASE_URL")
 	if lectureClipBaseUrl == "" {
 		panic("LECTURE_CLIP_BASE_URL environment variable not set")
 	}
@@ -107,9 +113,17 @@ func (s *lectureClipper) startRecording() error {
 	s.cachePos = 0
 	s.recording = true
 
+	// Main loop
 	for s.recording {
-		time.Sleep(time.Second) // Temporary until logic is implemented
+		sleepDuration, err := s.getNewFragments()
+		if err != nil {
+			s.recording = false
+			s.stopped = true
+			return err
+		}
+		time.Sleep(sleepDuration)
 	}
+	// Confirm we stopped
 	s.stopped = true
 
 	return nil
@@ -160,4 +174,59 @@ func (s *lectureClipper) clip() (string, error) {
 	// Post the clip to the CDN
 
 	return "", nil
+}
+
+// Gets the new fragments and returns how long to wait until calling the function again
+func (s *lectureClipper) getNewFragments() (time.Duration, error) {
+	// TODO: Use url.JoinPath in go v1.19
+	// Get the playlist
+	playlistUrl := lectureClipBaseUrl + "/" + s.roomUrl + "/index.m3u8"
+	res, err := http.Get(playlistUrl)
+	if err != nil {
+		return 0, err
+	}
+
+	playlist, err := m3u8.Read(res.Body)
+	if err != nil {
+		return 0, err
+	}
+
+	return s.fetchMissingFragments(playlist)
+}
+
+// Checks which fragments are still missing and fetches them, returns how long to wait until calling the function again
+func (s *lectureClipper) fetchMissingFragments(playlist *m3u8.Playlist) (time.Duration, error) {
+	// Slice the fragments from our last seq num to the end
+	startingIndex := s.seqNum - playlist.Sequence
+	if startingIndex < 0 {
+		startingIndex = 0
+	}
+	missingFragments := playlist.Items[startingIndex:]
+
+	// No new fragments
+	if len(missingFragments) == 0 {
+		lastItem := playlist.Items[len(playlist.Items)-1].(*m3u8.SegmentItem)
+		return time.Duration(lastItem.Duration) * time.Second, nil
+	}
+
+	// Playlist items are all Segment Items by specs of the livestreaming service, convert first
+	items := []*m3u8.SegmentItem{}
+	for _, item := range missingFragments {
+		switch item := item.(type) {
+		case *m3u8.SegmentItem:
+			items = append(items, item)
+		default:
+			return 0, fmt.Errorf("playlist contains element that is not a segment item, cannot handle")
+		}
+	}
+
+	fmt.Println(items)
+	fmt.Println(items[0].Duration)
+	fmt.Println(items[0].Segment)
+	fmt.Println(playlist.Sequence)
+	fmt.Println(playlist.SegmentSize())
+
+	s.seqNum = playlist.Sequence + playlist.SegmentSize()
+
+	return time.Second, nil
 }
