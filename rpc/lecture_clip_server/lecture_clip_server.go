@@ -3,6 +3,7 @@ package lecture_clip_server
 import (
 	"context"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"os"
 	"sync"
@@ -35,7 +36,7 @@ type lectureClipper struct {
 	// Used to confirm the clipper stopped
 	stopped bool
 	// Cache holding the recent video fragments for the clip
-	cache *[]*byte
+	cache [][]byte
 	// Position of the next entry to the cache, with the index being cachePos % len(cache)
 	cachePos int
 	// The last media sequence number captured
@@ -108,8 +109,8 @@ func (s *LectureClipServer) Clip(ctx context.Context, in *pb.ClipRequest) (*pb.C
 // Should be called as a goroutine, starts recording for the clips
 func (s *lectureClipper) startRecording() error {
 	// Reset the clipper
-	newCache := make([]*byte, clipFragmentCacheLength)
-	s.cache = &newCache
+	newCache := make([][]byte, clipFragmentCacheLength)
+	s.cache = newCache
 	s.cachePos = 0
 	s.recording = true
 
@@ -154,7 +155,7 @@ func (s *lectureClipper) clip() (string, error) {
 	s.Lock()
 
 	// Make local copy of needed attributes
-	cache := *s.cache
+	cache := s.cache
 	clipEnd := s.cachePos
 
 	s.Unlock()
@@ -209,24 +210,43 @@ func (s *lectureClipper) fetchMissingFragments(playlist *m3u8.Playlist) (time.Du
 		return time.Duration(lastItem.Duration) * time.Second, nil
 	}
 
-	// Playlist items are all Segment Items by specs of the livestreaming service, convert first
-	items := []*m3u8.SegmentItem{}
+	// Fetch all the missing fragments
 	for _, item := range missingFragments {
 		switch item := item.(type) {
 		case *m3u8.SegmentItem:
-			items = append(items, item)
+			if err := s.cachePlaylistItem(item.Segment, s.cachePos%len(s.cache)); err != nil {
+				return 0, err
+			}
+			s.cachePos++
 		default:
 			return 0, fmt.Errorf("playlist contains element that is not a segment item, cannot handle")
 		}
 	}
 
-	fmt.Println(items)
-	fmt.Println(items[0].Duration)
-	fmt.Println(items[0].Segment)
-	fmt.Println(playlist.Sequence)
-	fmt.Println(playlist.SegmentSize())
-
 	s.seqNum = playlist.Sequence + playlist.SegmentSize()
 
 	return time.Second, nil
+}
+
+// Fetches the item specified by the url and inserts it into the cache at the given index
+func (s *lectureClipper) cachePlaylistItem(url string, index int) error {
+	itemUrl := lectureClipBaseUrl + "/" + s.roomUrl + "/" + url
+
+	res, err := http.Get(itemUrl)
+	if err != nil {
+		return err
+	}
+
+	bytes, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		return err
+	}
+
+	s.Lock()
+
+	s.cache[index] = bytes
+
+	s.Unlock()
+
+	return nil
 }
