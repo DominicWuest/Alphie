@@ -1,7 +1,9 @@
 package lecture_clip_server
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -43,12 +45,24 @@ type lectureClipper struct {
 	seqNum int
 }
 
+// Struct for the response we get when posting a clip to the CDN server
+type postResponse struct {
+	Filename string `json:"filename"`
+}
+
 const (
 	// How many video fragments should be cached, decides lectureClipper buffer size
 	clipFragmentCacheLength int = 180
+	// Where to post the clips to on our CDN
+	cdnURL string = "/lecture_clips"
 )
 
-var lectureClipBaseUrl string
+var (
+	lectureClipBaseUrl string
+	cdnHostname        string
+	cdnPort            string
+	cdnConnString      string
+)
 
 // Registers the lecture clip server and initialises needed variables
 func Register(srv *grpc.Server) {
@@ -56,6 +70,15 @@ func Register(srv *grpc.Server) {
 	if lectureClipBaseUrl == "" {
 		panic("LECTURE_CLIP_BASE_URL environment variable not set")
 	}
+
+	hostname := os.Getenv("CDN_HOSTNAME")
+	port := os.Getenv("CDN_REST_PORT")
+	if len(hostname)*len(port) == 0 {
+		panic("No CDN_HOSTNAME or CDN_REST_PORT set")
+	}
+	cdnHostname = hostname
+	cdnPort = port
+	cdnConnString = "http://" + cdnHostname + ":" + cdnPort + cdnURL
 
 	activeClippers := make(map[string]*lectureClipper)
 	activeClippers["test"] = &lectureClipper{ // Temporary, used for testing
@@ -151,30 +174,48 @@ func (s *lectureClipper) stopRecording() error {
 
 // Creates the clip and returns the url where it was stored
 func (s *lectureClipper) clip() (string, error) {
-	// Capturing the clip
+	// Capture the clip
+	clip := new(bytes.Buffer)
+
 	s.Lock()
 
-	// Make local copy of needed attributes
-	cache := s.cache
 	clipEnd := s.cachePos
-
-	s.Unlock()
-
-	clipStart := clipEnd - len(cache)
+	clipStart := clipEnd - len(s.cache)
 	if clipStart < 0 { // Ensure we don't read unwritten entries
 		clipStart = 0
 	}
 
 	// Stick fragments together
 	for i := clipStart; i < clipEnd; i++ {
-		fragment := cache[i%len(cache)]
+		fragment := s.cache[i%len(s.cache)]
 
-		fmt.Println(fragment) // Temporary, suppress unused error
+		if _, err := clip.Write(fragment); err != nil {
+			return "", err
+		}
 	}
 
-	// Post the clip to the CDN
+	s.Unlock()
 
-	return "", nil
+	// Post the clip to the CDN
+	res, err := http.Post(cdnConnString, "video/MP2T", clip)
+	if err != nil {
+		return "", err
+	}
+	if res.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("failed to post clip: %+v", res)
+	}
+
+	// Read where the clip was stored
+	content, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		return "", err
+	}
+	response := postResponse{}
+	if err := json.Unmarshal(content, &response); err != nil {
+		return "", err
+	}
+
+	return response.Filename, nil
 }
 
 // Gets the new fragments and returns how long to wait until calling the function again

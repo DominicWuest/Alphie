@@ -15,6 +15,11 @@ var contentTypes = map[string]string{
 	"image/gif":  "gif",
 	"image/jpeg": "jpg",
 	"image/png":  "png",
+	/*
+		TODO: Convert ts to mp4
+		ffmpeg -i 2353500672.ts -c:v libx264 -c:a aac output.mp4
+	*/
+	"video/MP2T": "ts",
 }
 
 var cdn_path = os.Getenv("CDN_ROOT")
