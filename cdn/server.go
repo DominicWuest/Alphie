@@ -5,6 +5,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
+	"os/exec"
 	"path"
 	"regexp"
 	"strings"
@@ -15,11 +16,7 @@ var contentTypes = map[string]string{
 	"image/gif":  "gif",
 	"image/jpeg": "jpg",
 	"image/png":  "png",
-	/*
-		TODO: Convert ts to mp4
-		ffmpeg -i 2353500672.ts -c:v libx264 -c:a aac output.mp4
-	*/
-	"video/MP2T": "ts",
+	"video/MP2T": "mp4", // Will be a .ts file at first, but then converted to mp4
 }
 
 var cdn_path = os.Getenv("CDN_ROOT")
@@ -82,7 +79,7 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check for valid content type
-	file_extension, found := contentTypes[r.Header["Content-Type"][0]]
+	file_extension, found := contentTypes[contentType[0]]
 	if !found {
 		w.WriteHeader(http.StatusBadRequest)
 		return
@@ -103,8 +100,34 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 	}
 	file.Chmod(0644)
 
-	// Write to file
-	if _, err = file.Write(postData); err != nil {
+	// Convert transport stream to mp4
+	if contentType[0] == "video/MP2T" {
+		// Write ts to temp file
+		tsOut, err := os.CreateTemp("", "*.ts")
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		tsOut.Write(postData)
+
+		// Convert to mp4 and write to temporary file already created
+		in := tsOut.Name()
+		out := file.Name()
+
+		cmd := exec.Command("ffmpeg",
+			"-i", in,
+			"-c:v", "libx264",
+			"-c:a", "aac",
+			"-y",
+			"-preset", "ultrafast",
+			out,
+		)
+
+		if err := cmd.Run(); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+	} else if _, err = file.Write(postData); err != nil { // Write to file
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}

@@ -5,7 +5,7 @@ RUN go build -o /server
 
 FROM alpine:latest AS deployment
 WORKDIR /usr/src/app
-RUN apk add tzdata
+RUN apk add tzdata ffmpeg
 COPY --from=builder /server .
 EXPOSE 1337
 CMD ./server
