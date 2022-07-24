@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
+	"strconv"
 	"sync"
 	"time"
 
@@ -22,15 +23,13 @@ import (
 // Struct of the gRPC server
 type LectureClipServer struct {
 	pb.UnimplementedLectureClipServer
-	// Base url to send requests to for video fragments
-	lectureClipBaseUrl string
-	// Active clippers currently tracking active lectures
-	activeClippers map[string]*lectureClipper
 }
 
 type lectureClipper struct {
 	// To ensure consistency between clipping and recording
 	sync.Mutex
+	// The ID of the clipper itself
+	clipperId string
 	// Where to send requests to for the video fragments
 	roomUrl string
 	// Used to stop clipper
@@ -58,10 +57,23 @@ const (
 )
 
 var (
+	// Active clippers currently tracking active lectures
+	activeClippersByID map[string]*lectureClipper
+	// List of active clippers to address by index
+	activeClippers []*lectureClipper
+	// Ensure consistency when adding and removing clippers
+	clippersMutex *sync.Mutex
+)
+
+var (
+	// Base URL of the streaming service
 	lectureClipBaseUrl string
-	cdnHostname        string
-	cdnPort            string
-	cdnConnString      string
+	// Hostname of the CDN server
+	cdnHostname string
+	// Port of the CDN server
+	cdnPort string
+	// Where to post clip requests to
+	cdnConnString string
 )
 
 // Registers the lecture clip server and initialises needed variables
@@ -80,46 +92,55 @@ func Register(srv *grpc.Server) {
 	cdnPort = port
 	cdnConnString = "http://" + cdnHostname + ":" + cdnPort + cdnURL
 
-	activeClippers := make(map[string]*lectureClipper)
-	activeClippers["test"] = &lectureClipper{ // Temporary, used for testing
-		roomUrl: "hg-d-1-1",
-	}
-	go func(clipper *lectureClipper) {
-		fmt.Println("Starting test clipper")
-		go clipper.startRecording()
-		// No graceful shutdown yet, to be implemented
-	}(activeClippers["test"])
+	activeClippersByID = make(map[string]*lectureClipper)
+	clippersMutex = &sync.Mutex{}
 
-	pb.RegisterLectureClipServer(srv, &LectureClipServer{
-		lectureClipBaseUrl: lectureClipBaseUrl,
-		activeClippers:     activeClippers,
-	})
+	// Temporary test clipper
+	testClipper := lectureClipper{
+		clipperId: "test",
+		roomUrl:   "hg-d-1-1",
+	}
+	go func() {
+		// Shutdown test clipper after 30 seconds
+		time.AfterFunc(30*time.Second, func() { fmt.Println("Stopped recording: ", testClipper.stopRecording()) })
+		// Start test clipper
+		testClipper.startRecording()
+	}()
+
+	pb.RegisterLectureClipServer(srv, &LectureClipServer{})
 }
 
 func (s *LectureClipServer) Clip(ctx context.Context, in *pb.ClipRequest) (*pb.ClipResponse, error) {
 	clips := []*pb.Clip{}
 	if in.LectureId == nil { // Clip all lectures
-		for clipperId, clipper := range s.activeClippers {
+		for _, clipper := range activeClippers {
 			clipUrl, err := clipper.clip()
 			if err != nil {
 				return nil, err
 			}
 			clips = append(clips, &pb.Clip{
-				Id:          clipperId,
+				Id:          clipper.clipperId,
 				ContentPath: clipUrl,
 			})
 		}
 	} else { // Clip specific lecture
-		clipper, found := s.activeClippers[in.GetLectureId()]
-		if !found {
-			return nil, status.Error(codes.InvalidArgument, "invalid lecture ID")
+		var clipper *lectureClipper
+		// If an index was supplied
+		if index, err := strconv.Atoi(in.GetLectureId()); err == nil {
+			clipper = activeClippers[index]
+		} else {
+			tmp, found := activeClippersByID[in.GetLectureId()]
+			clipper = tmp
+			if !found {
+				return nil, status.Error(codes.InvalidArgument, "invalid lecture ID")
+			}
 		}
 		clipUrl, err := clipper.clip()
 		if err != nil {
 			return nil, err
 		}
 		clips = append(clips, &pb.Clip{
-			Id:          in.GetLectureId(),
+			Id:          clipper.clipperId,
 			ContentPath: clipUrl,
 		})
 	}
@@ -129,8 +150,32 @@ func (s *LectureClipServer) Clip(ctx context.Context, in *pb.ClipRequest) (*pb.C
 	}, nil
 }
 
+func (s *LectureClipServer) List(ctx context.Context, in *pb.ListRequest) (*pb.ListResponse, error) {
+	clippersMutex.Lock()
+	defer clippersMutex.Unlock()
+
+	res := pb.ListResponse{}
+
+	for i, clipper := range activeClippers {
+		res.Ids = append(res.Ids, &pb.ClipperID{
+			Index: strconv.Itoa(i),
+			Id:    clipper.clipperId,
+		})
+	}
+
+	return &res, nil
+}
+
 // Should be called as a goroutine, starts recording for the clips
 func (s *lectureClipper) startRecording() error {
+	// Insert the clipper into the list of active clippers
+	clippersMutex.Lock()
+
+	activeClippers = append(activeClippers, s)
+	activeClippersByID[s.clipperId] = s
+
+	clippersMutex.Unlock()
+
 	// Reset the clipper
 	newCache := make([][]byte, clipFragmentCacheLength)
 	s.cache = newCache
@@ -155,11 +200,25 @@ func (s *lectureClipper) startRecording() error {
 
 // Stops the clippers recording
 func (s *lectureClipper) stopRecording() error {
+	// Remove the clipper from the list of active clippers
+	clippersMutex.Lock()
+
+	var newClippers []*lectureClipper
+	for _, clipper := range activeClippers {
+		if clipper.clipperId != s.clipperId {
+			newClippers = append(newClippers, clipper)
+		}
+	}
+	activeClippers = newClippers
+	delete(activeClippersByID, s.clipperId)
+
+	clippersMutex.Unlock()
+
+	// Shut down the clipper
 	s.recording = false
 	// Make sure the recorder has stopped
 	waitCounter := 50
 	waitDuration := 100 * time.Millisecond
-
 	for !s.stopped && waitCounter > 0 {
 		time.Sleep(waitDuration)
 		waitCounter--
