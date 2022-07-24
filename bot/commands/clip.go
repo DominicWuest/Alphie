@@ -49,35 +49,58 @@ func (s *Clip) HandleCommand(bot *discord.Session, ctx *discord.MessageCreate, a
 		},
 	}
 
-	res, err := s.client.Clip(timeoutCtx, req)
-	if err != nil {
-		// Invalid ID supplied
-		if status.Code(err) == codes.InvalidArgument {
-			embed.Fields = []*discord.MessageEmbedField{
-				{
-					Name:  "Invalid ID supplied.",
-					Value: "No clips were created.",
-				},
-			}
-		} else {
+	// List active clippers
+	if len(args) == 2 && strings.ToLower(args[1]) == "list" {
+		embed.Author.Name = "Active Clippers"
+		res, err := s.client.List(timeoutCtx, &pb.ListRequest{})
+		if err != nil {
 			return err
 		}
-	} else {
-		// No clips were created, as no active lectures
-		if len(res.Clips) == 0 {
-			embed.Fields = []*discord.MessageEmbedField{
-				{
-					Name:  "No active lectures.",
-					Value: "No clips were created.",
-				},
-			}
-		}
 
-		for _, clip := range res.Clips {
+		clippers := res.GetIds()
+		if len(clippers) == 0 {
 			embed.Fields = append(embed.Fields, &discord.MessageEmbedField{
-				Name:  clip.GetId(),
-				Value: clip.GetContentPath(),
+				Name:  "No Active Clippers.",
+				Value: "There are currently no lectures being clipped.",
 			})
+		}
+		for _, clipper := range clippers {
+			embed.Fields = append(embed.Fields, &discord.MessageEmbedField{
+				Name:  "Index: " + clipper.Index,
+				Value: "ID: " + clipper.Id,
+			})
+		}
+	} else { // Make clip
+		res, err := s.client.Clip(timeoutCtx, req)
+		if err != nil {
+			// Invalid ID supplied
+			if status.Code(err) == codes.InvalidArgument {
+				embed.Fields = []*discord.MessageEmbedField{
+					{
+						Name:  "Invalid ID supplied.",
+						Value: "No clips were created. Use `clip list` to see all available active lectures.",
+					},
+				}
+			} else {
+				return err
+			}
+		} else {
+			// No clips were created, as no active lectures
+			if len(res.Clips) == 0 {
+				embed.Fields = []*discord.MessageEmbedField{
+					{
+						Name:  "No active lectures.",
+						Value: "No clips were created.",
+					},
+				}
+			}
+
+			for _, clip := range res.Clips {
+				embed.Fields = append(embed.Fields, &discord.MessageEmbedField{
+					Name:  "ID: " + clip.GetId(),
+					Value: clip.GetContentPath(),
+				})
+			}
 		}
 	}
 
@@ -87,11 +110,11 @@ func (s *Clip) HandleCommand(bot *discord.Session, ctx *discord.MessageCreate, a
 }
 
 func (s Clip) Desc() string {
-	return "Takes a clip of the currently running lectures."
+	return "Makes a clip of the currently running lectures."
 }
 
 func (s Clip) Help() string {
-	return "Usage: `clip [id]`. The ID is optional and specifies the lecture you want to clip. If no or a wrong ID is specified, all current lectures will be clipped. Check the VVZ for the lecture IDs."
+	return "Usage: `clip [id]`. The ID is optional and specifies the lecture you want to clip.\nUse `clip list` to see the indexes and IDs of the active clippers.\nIf no or a wrong ID is specified, all current lectures will be clipped."
 }
 
 func (s Clip) Init(args ...interface{}) constants.Command {

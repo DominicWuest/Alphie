@@ -5,7 +5,7 @@ package lecture_clip;
 option go_package = "github.com/DominicWuest/Alphie/rpc/lecture_clip/pb;pb";
 
 message ClipRequest {
-    // The ID of the lecture to clip (ID taken from VVZ)
+    // The ID of the lecture to clip (ID taken from VVZ or index)
     // May be omitted to make a clip of all current lectures
     optional string lecture_id = 1;
 }
@@ -13,7 +13,7 @@ message ClipRequest {
 message Clip {
     // The ID of the clipped lecture
     string id = 1;
-    // The path where the clips got stored at
+    // The path where the clips can get accessed
     string content_path = 2;
 }
 
@@ -22,7 +22,22 @@ message ClipResponse {
     repeated Clip clips = 1;
 }
 
+message ListRequest {}
+
+// Ways to address clipper
+message ClipperID {
+    string id = 1;
+    // String to be consistent with clip request ID
+    string index = 2;
+}
+
+message ListResponse {
+    repeated ClipperID ids = 1;
+}
+
 service LectureClip {
     // Captures and stores the clip
     rpc Clip(ClipRequest) returns (ClipResponse) {}
+    // Returns a list of currently active clippers and their associated IDs
+    rpc List(ListRequest) returns (ListResponse) {}
 }
