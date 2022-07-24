@@ -112,6 +112,9 @@ func Register(srv *grpc.Server) {
 
 func (s *LectureClipServer) Clip(ctx context.Context, in *pb.ClipRequest) (*pb.ClipResponse, error) {
 	clips := []*pb.Clip{}
+	// Make sure the clippers are consistent during the clipping
+	clippersMutex.Lock()
+	defer clippersMutex.Unlock()
 	if in.LectureId == nil { // Clip all lectures
 		for _, clipper := range activeClippers {
 			clipUrl, err := clipper.clip()
