@@ -183,6 +183,15 @@ func createAndStartClipper(clipperId, roomUrl string, recordingDuration time.Dur
 		return err
 	}
 
+	// Insert the clipper into the list of active clippers
+	clippersMutex.Lock()
+
+	activeClippers = append(activeClippers, clipper)
+	activeClippersByID[clipperId] = clipper
+
+	clippersMutex.Unlock()
+
+	// Shut down the clipper after the requested duration
 	time.AfterFunc(recordingDuration, func() {
 		shutdownClipper(clipper)
 	})
