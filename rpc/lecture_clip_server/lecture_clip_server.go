@@ -14,7 +14,6 @@ import (
 
 	pb "github.com/DominicWuest/Alphie/rpc/lecture_clip_server/lecture_clip_pb"
 
-	"github.com/quangngotan95/go-m3u8/m3u8"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -31,7 +30,7 @@ type lectureClipper struct {
 	// The ID of the clipper itself
 	clipperId string
 	// Where to send requests to for the video fragments
-	roomUrl string
+	streamEndpoint string
 	// Used to stop clipper
 	recording bool
 	// Used to confirm the clipper stopped
@@ -50,8 +49,6 @@ type postResponse struct {
 }
 
 const (
-	// How many video fragments should be cached, decides lectureClipper buffer size
-	clipFragmentCacheLength int = 180
 	// Where to post the clips to on our CDN
 	cdnURL string = "/lecture_clips"
 )
@@ -96,35 +93,28 @@ func Register(srv *grpc.Server) {
 	clippersMutex = &sync.Mutex{}
 
 	// Temporary test clipper
-	testClipper := lectureClipper{
-		clipperId: "test",
-		roomUrl:   "hg-d-1-1",
+	err := createAndStartClipper("test", "hg-f-1", 30*time.Second)
+	if err != nil {
+		fmt.Println("Failed to start test clipper: ", err)
 	}
-	go func() {
-		// Shutdown test clipper after 30 seconds
-		time.AfterFunc(30*time.Second, func() { fmt.Println("Stopped recording: ", testClipper.stopRecording()) })
-		// Start test clipper
-		testClipper.startRecording()
-	}()
 
 	pb.RegisterLectureClipServer(srv, &LectureClipServer{})
 }
 
 func (s *LectureClipServer) Clip(ctx context.Context, in *pb.ClipRequest) (*pb.ClipResponse, error) {
-	clips := []*pb.Clip{}
+	clips := [][]byte{}
+	clipperIds := []string{}
 	// Make sure the clippers are consistent during the clipping
 	clippersMutex.Lock()
-	defer clippersMutex.Unlock()
+
 	if in.LectureId == nil { // Clip all lectures
 		for _, clipper := range activeClippers {
-			clipUrl, err := clipper.clip()
+			clip, err := clipper.clip()
 			if err != nil {
 				return nil, err
 			}
-			clips = append(clips, &pb.Clip{
-				Id:          clipper.clipperId,
-				ContentPath: clipUrl,
-			})
+			clips = append(clips, clip)
+			clipperIds = append(clipperIds, clipper.clipperId)
 		}
 	} else { // Clip specific lecture
 		var clipper *lectureClipper
@@ -138,18 +128,32 @@ func (s *LectureClipServer) Clip(ctx context.Context, in *pb.ClipRequest) (*pb.C
 				return nil, status.Error(codes.InvalidArgument, "invalid lecture ID")
 			}
 		}
-		clipUrl, err := clipper.clip()
+		clip, err := clipper.clip()
 		if err != nil {
 			return nil, err
 		}
-		clips = append(clips, &pb.Clip{
-			Id:          clipper.clipperId,
-			ContentPath: clipUrl,
+		clips = append(clips, clip)
+		clipperIds = append(clipperIds, clipper.clipperId)
+	}
+
+	clippersMutex.Unlock()
+
+	// Start posting the new clips to the CDN
+	response := []*pb.Clip{}
+
+	for i := range clips {
+		url, err := postClip(clips[i])
+		if err != nil {
+			return nil, err
+		}
+		response = append(response, &pb.Clip{
+			Id:          clipperIds[i],
+			ContentPath: url,
 		})
 	}
 
 	return &pb.ClipResponse{
-		Clips: clips,
+		Clips: response,
 	}, nil
 }
 
@@ -169,97 +173,55 @@ func (s *LectureClipServer) List(ctx context.Context, in *pb.ListRequest) (*pb.L
 	return &res, nil
 }
 
-// Should be called as a goroutine, starts recording for the clips
-func (s *lectureClipper) startRecording() error {
+func createAndStartClipper(clipperId, roomUrl string, recordingDuration time.Duration) error {
+	clipper, err := createClipper(clipperId, lectureClipBaseUrl+"/"+roomUrl)
+	if err != nil {
+		return err
+	}
+
+	if err := clipper.start(); err != nil {
+		return err
+	}
+
 	// Insert the clipper into the list of active clippers
 	clippersMutex.Lock()
 
-	activeClippers = append(activeClippers, s)
-	activeClippersByID[s.clipperId] = s
+	activeClippers = append(activeClippers, clipper)
+	activeClippersByID[clipperId] = clipper
 
 	clippersMutex.Unlock()
 
-	// Reset the clipper
-	newCache := make([][]byte, clipFragmentCacheLength)
-	s.cache = newCache
-	s.cachePos = 0
-	s.recording = true
-
-	// Main loop
-	for s.recording {
-		sleepDuration, err := s.getNewFragments()
-		if err != nil {
-			s.recording = false
-			s.stopped = true
-			return err
-		}
-		time.Sleep(sleepDuration)
-	}
-	// Confirm we stopped
-	s.stopped = true
+	// Shut down the clipper after the requested duration
+	time.AfterFunc(recordingDuration, func() {
+		shutdownClipper(clipper)
+	})
 
 	return nil
 }
 
-// Stops the clippers recording
-func (s *lectureClipper) stopRecording() error {
+func shutdownClipper(clipper *lectureClipper) error {
 	// Remove the clipper from the list of active clippers
 	clippersMutex.Lock()
 
 	var newClippers []*lectureClipper
-	for _, clipper := range activeClippers {
-		if clipper.clipperId != s.clipperId {
-			newClippers = append(newClippers, clipper)
+	for _, i := range activeClippers {
+		if i.clipperId != clipper.clipperId {
+			newClippers = append(newClippers, i)
 		}
 	}
 	activeClippers = newClippers
-	delete(activeClippersByID, s.clipperId)
+	delete(activeClippersByID, clipper.clipperId)
 
 	clippersMutex.Unlock()
 
-	// Shut down the clipper
-	s.recording = false
-	// Make sure the recorder has stopped
-	waitCounter := 50
-	waitDuration := 100 * time.Millisecond
-	for !s.stopped && waitCounter > 0 {
-		time.Sleep(waitDuration)
-		waitCounter--
-	}
-
-	if waitCounter == 0 {
-		return fmt.Errorf("failed to stop recording of %s (timed out)", s.roomUrl)
-	}
-
-	return nil
+	// Stop the clipper itself
+	return clipper.stop()
 }
 
-// Creates the clip and returns the url where it was stored
-func (s *lectureClipper) clip() (string, error) {
-	// Capture the clip
-	clip := new(bytes.Buffer)
-
-	s.Lock()
-
-	clipEnd := s.cachePos
-	clipStart := clipEnd - len(s.cache)
-	if clipStart < 0 { // Ensure we don't read unwritten entries
-		clipStart = 0
-	}
-
-	// Stick fragments together
-	for i := clipStart; i < clipEnd; i++ {
-		fragment := s.cache[i%len(s.cache)]
-
-		if _, err := clip.Write(fragment); err != nil {
-			return "", err
-		}
-	}
-
-	s.Unlock()
-
+// Sends the clip to the CDN and returns its filename
+func postClip(clip []byte) (string, error) {
 	// Post the clip to the CDN
-	res, err := http.Post(cdnConnString, "video/MP2T", clip)
+	res, err := http.Post(cdnConnString, "video/MP2T", bytes.NewBuffer(clip))
 	if err != nil {
 		return "", err
 	}
@@ -278,78 +240,4 @@ func (s *lectureClipper) clip() (string, error) {
 	}
 
 	return response.Filename, nil
-}
-
-// Gets the new fragments and returns how long to wait until calling the function again
-func (s *lectureClipper) getNewFragments() (time.Duration, error) {
-	// TODO: Use url.JoinPath in go v1.19
-	// Get the playlist
-	playlistUrl := lectureClipBaseUrl + "/" + s.roomUrl + "/index.m3u8"
-	res, err := http.Get(playlistUrl)
-	if err != nil {
-		return 0, err
-	}
-
-	playlist, err := m3u8.Read(res.Body)
-	if err != nil {
-		return 0, err
-	}
-
-	return s.fetchMissingFragments(playlist)
-}
-
-// Checks which fragments are still missing and fetches them, returns how long to wait until calling the function again
-func (s *lectureClipper) fetchMissingFragments(playlist *m3u8.Playlist) (time.Duration, error) {
-	// Slice the fragments from our last seq num to the end
-	startingIndex := s.seqNum - playlist.Sequence
-	if startingIndex < 0 {
-		startingIndex = 0
-	}
-	missingFragments := playlist.Items[startingIndex:]
-
-	// No new fragments
-	if len(missingFragments) == 0 {
-		lastItem := playlist.Items[len(playlist.Items)-1].(*m3u8.SegmentItem)
-		return time.Duration(lastItem.Duration) * time.Second, nil
-	}
-
-	// Fetch all the missing fragments
-	for _, item := range missingFragments {
-		switch item := item.(type) {
-		case *m3u8.SegmentItem:
-			if err := s.cachePlaylistItem(item.Segment, s.cachePos%len(s.cache)); err != nil {
-				return 0, err
-			}
-			s.cachePos++
-		default:
-			return 0, fmt.Errorf("playlist contains element that is not a segment item, cannot handle")
-		}
-	}
-
-	s.seqNum = playlist.Sequence + playlist.SegmentSize()
-
-	return time.Second, nil
-}
-
-// Fetches the item specified by the url and inserts it into the cache at the given index
-func (s *lectureClipper) cachePlaylistItem(url string, index int) error {
-	itemUrl := lectureClipBaseUrl + "/" + s.roomUrl + "/" + url
-
-	res, err := http.Get(itemUrl)
-	if err != nil {
-		return err
-	}
-
-	bytes, err := ioutil.ReadAll(res.Body)
-	if err != nil {
-		return err
-	}
-
-	s.Lock()
-
-	s.cache[index] = bytes
-
-	s.Unlock()
-
-	return nil
 }
