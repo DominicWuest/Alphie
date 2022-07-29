@@ -1,8 +1,12 @@
 package lecture_clip_server
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
+	"net/http"
 	"os"
 	"strconv"
 	"sync"
@@ -98,20 +102,19 @@ func Register(srv *grpc.Server) {
 }
 
 func (s *LectureClipServer) Clip(ctx context.Context, in *pb.ClipRequest) (*pb.ClipResponse, error) {
-	clips := []*pb.Clip{}
+	clips := [][]byte{}
+	clipperIds := []string{}
 	// Make sure the clippers are consistent during the clipping
 	clippersMutex.Lock()
-	defer clippersMutex.Unlock()
+
 	if in.LectureId == nil { // Clip all lectures
 		for _, clipper := range activeClippers {
-			clipUrl, err := clipper.clip()
+			clip, err := clipper.clip()
 			if err != nil {
 				return nil, err
 			}
-			clips = append(clips, &pb.Clip{
-				Id:          clipper.clipperId,
-				ContentPath: clipUrl,
-			})
+			clips = append(clips, clip)
+			clipperIds = append(clipperIds, clipper.clipperId)
 		}
 	} else { // Clip specific lecture
 		var clipper *lectureClipper
@@ -125,18 +128,32 @@ func (s *LectureClipServer) Clip(ctx context.Context, in *pb.ClipRequest) (*pb.C
 				return nil, status.Error(codes.InvalidArgument, "invalid lecture ID")
 			}
 		}
-		clipUrl, err := clipper.clip()
+		clip, err := clipper.clip()
 		if err != nil {
 			return nil, err
 		}
-		clips = append(clips, &pb.Clip{
-			Id:          clipper.clipperId,
-			ContentPath: clipUrl,
+		clips = append(clips, clip)
+		clipperIds = append(clipperIds, clipper.clipperId)
+	}
+
+	clippersMutex.Unlock()
+
+	// Start posting the new clips to the CDN
+	response := []*pb.Clip{}
+
+	for i := range clips {
+		url, err := postClip(clips[i])
+		if err != nil {
+			return nil, err
+		}
+		response = append(response, &pb.Clip{
+			Id:          clipperIds[i],
+			ContentPath: url,
 		})
 	}
 
 	return &pb.ClipResponse{
-		Clips: clips,
+		Clips: response,
 	}, nil
 }
 
@@ -190,4 +207,28 @@ func shutdownClipper(clipper *lectureClipper) error {
 
 	// Stop the clipper itself
 	return clipper.stop()
+}
+
+// Sends the clip to the CDN and returns its filename
+func postClip(clip []byte) (string, error) {
+	// Post the clip to the CDN
+	res, err := http.Post(cdnConnString, "video/MP2T", bytes.NewBuffer(clip))
+	if err != nil {
+		return "", err
+	}
+	if res.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("failed to post clip: %+v", res)
+	}
+
+	// Read where the clip was stored
+	content, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		return "", err
+	}
+	response := postResponse{}
+	if err := json.Unmarshal(content, &response); err != nil {
+		return "", err
+	}
+
+	return response.Filename, nil
 }

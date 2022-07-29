@@ -2,7 +2,6 @@ package lecture_clip_server
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -69,7 +68,7 @@ func (s *lectureClipper) stop() error {
 }
 
 // Creates the clip and returns the url where it was stored
-func (s *lectureClipper) clip() (string, error) {
+func (s *lectureClipper) clip() ([]byte, error) {
 	// Capture the clip
 	clip := new(bytes.Buffer)
 
@@ -86,32 +85,13 @@ func (s *lectureClipper) clip() (string, error) {
 		fragment := s.cache[i%len(s.cache)]
 
 		if _, err := clip.Write(fragment); err != nil {
-			return "", err
+			return nil, err
 		}
 	}
 
 	s.Unlock()
 
-	// Post the clip to the CDN
-	res, err := http.Post(cdnConnString, "video/MP2T", clip)
-	if err != nil {
-		return "", err
-	}
-	if res.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("failed to post clip: %+v", res)
-	}
-
-	// Read where the clip was stored
-	content, err := ioutil.ReadAll(res.Body)
-	if err != nil {
-		return "", err
-	}
-	response := postResponse{}
-	if err := json.Unmarshal(content, &response); err != nil {
-		return "", err
-	}
-
-	return response.Filename, nil
+	return clip.Bytes(), nil
 }
 
 // Gets the new fragments and returns how long to wait until calling the function again
