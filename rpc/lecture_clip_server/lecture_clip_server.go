@@ -3,6 +3,7 @@ package lecture_clip_server
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -17,6 +18,8 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	_ "github.com/lib/pq"
 )
 
 // Struct of the gRPC server
@@ -96,6 +99,25 @@ func Register(srv *grpc.Server) {
 	err := createAndStartClipper("test", "hg-f-1", 30*time.Second)
 	if err != nil {
 		fmt.Println("Failed to start test clipper: ", err)
+	}
+
+	connString := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
+		os.Getenv("DB_HOSTNAME"),
+		os.Getenv("DB_PORT"),
+		os.Getenv("POSTGRES_USER"),
+		os.Getenv("POSTGRES_PASSWORD"),
+		os.Getenv("POSTGRES_USER"),
+	)
+	// Check if DB connection works
+	db, err := sql.Open("postgres", connString)
+	if err != nil {
+		panic(fmt.Sprintln("Error connecting to the database: ", err))
+	}
+	if !checkDBConnection(db) {
+		panic("Couldn't connect to the database, pings timed out")
+	}
+	if err = initLectureClipperSchedules(db); err != nil {
+		panic(fmt.Sprintln("Failed to initialise lecture clipper schedules: ", err))
 	}
 
 	pb.RegisterLectureClipServer(srv, &LectureClipServer{})
@@ -240,4 +262,52 @@ func postClip(clip []byte) (string, error) {
 	}
 
 	return response.Filename, nil
+}
+
+// Checks that the DB is up before querying the schedules
+func checkDBConnection(db *sql.DB) bool {
+	// Check that DB is up, panic if not
+	success := false
+	var err error = nil
+	// Try to ping 30, retrying every 2 seconds, wait for the DB to boot up first
+	for i := 0; i < 30; i++ {
+		if err = db.Ping(); err == nil {
+			success = true
+			break
+		}
+		time.Sleep(2 * time.Second)
+	}
+	return success
+}
+
+// Queries the schedules form the DB and inits cronjobs for starting the clippers
+func initLectureClipperSchedules(db *sql.DB) error {
+	const dbTimeout time.Duration = 5 * time.Second
+
+	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
+	defer cancel()
+
+	rows, err := db.QueryContext(ctx,
+		`SELECT * FROM lecture_clippers.clippers
+		JOIN lecture_clippers.schedule USING(id)
+	`)
+	if err != nil {
+		return err
+	}
+
+	for rows.Next() {
+		var (
+			id              string
+			semester        string
+			room_url        string
+			schedule        string
+			durationMinutes int
+		)
+		if err := rows.Scan(&id, &semester, &room_url, &schedule, &durationMinutes); err != nil {
+			return nil
+		}
+		fmt.Println(id, semester, room_url, schedule, durationMinutes)
+	}
+
+	return nil
 }
