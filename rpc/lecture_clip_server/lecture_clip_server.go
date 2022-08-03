@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"os"
 	"strconv"
@@ -20,6 +21,8 @@ import (
 	"google.golang.org/grpc/status"
 
 	_ "github.com/lib/pq"
+
+	"github.com/robfig/cron"
 )
 
 // Struct of the gRPC server
@@ -56,6 +59,15 @@ const (
 	cdnURL string = "/lecture_clips"
 )
 
+// Calendar weeks of semester start / end
+const (
+	springSemesterStart = 8
+	springSemesterEnd   = 22
+
+	fallSemesterStart = 38
+	fallSemesterEnd   = 51
+)
+
 var (
 	// Active clippers currently tracking active lectures
 	activeClippersByID map[string]*lectureClipper
@@ -75,6 +87,8 @@ var (
 	// Where to post clip requests to
 	cdnConnString string
 )
+
+var cronScheduler *cron.Cron
 
 // Registers the lecture clip server and initialises needed variables
 func Register(srv *grpc.Server) {
@@ -98,7 +112,7 @@ func Register(srv *grpc.Server) {
 	// Temporary test clipper
 	err := createAndStartClipper("test", "hg-f-1", 30*time.Second)
 	if err != nil {
-		fmt.Println("Failed to start test clipper: ", err)
+		log.Println("Failed to start test clipper: ", err)
 	}
 
 	connString := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
@@ -218,6 +232,7 @@ func createAndStartClipper(clipperId, roomUrl string, recordingDuration time.Dur
 		shutdownClipper(clipper)
 	})
 
+	log.Printf("Successfully started the clipper: %s\n", clipper.clipperId)
 	return nil
 }
 
@@ -236,6 +251,7 @@ func shutdownClipper(clipper *lectureClipper) error {
 
 	clippersMutex.Unlock()
 
+	log.Printf("Shutting down the clipper: %s\n", clipper.clipperId)
 	// Stop the clipper itself
 	return clipper.stop()
 }
@@ -287,6 +303,9 @@ func initLectureClipperSchedules(db *sql.DB) error {
 	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
 	defer cancel()
 
+	cronScheduler = cron.New()
+
+	// Get all the schedules
 	rows, err := db.QueryContext(ctx,
 		`SELECT * FROM lecture_clippers.clippers
 		JOIN lecture_clippers.schedule USING(id)
@@ -295,6 +314,7 @@ func initLectureClipperSchedules(db *sql.DB) error {
 		return err
 	}
 
+	// Init the schedule for every row
 	for rows.Next() {
 		var (
 			id              string
@@ -306,8 +326,46 @@ func initLectureClipperSchedules(db *sql.DB) error {
 		if err := rows.Scan(&id, &semester, &room_url, &schedule, &durationMinutes); err != nil {
 			return nil
 		}
-		fmt.Println(id, semester, room_url, schedule, durationMinutes)
+		if err := initSchedule(id, semester, room_url, schedule, durationMinutes); err != nil {
+			return err
+		}
 	}
+
+	cronScheduler.Start()
+
+	return nil
+}
+
+// Initialises the scheduled clipper using a cronjob
+func initSchedule(id, semester, roomUrl, schedule string, durationMinutes int) error {
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+	sched, err := parser.Parse(schedule)
+	if err != nil {
+		return err
+	}
+
+	cronScheduler.Schedule(sched, cron.FuncJob(func() {
+		// Ensure we're in the right semester
+		_, calendarWeek := time.Now().ISOWeek()
+		if semester == "F" &&
+			(calendarWeek < springSemesterStart || calendarWeek > springSemesterEnd) {
+			return
+		}
+		if semester == "H" &&
+			(calendarWeek < fallSemesterStart || calendarWeek > fallSemesterEnd) {
+			return
+		}
+		if semester == "B" &&
+			(calendarWeek < springSemesterStart || calendarWeek > springSemesterEnd) &&
+			(calendarWeek < fallSemesterStart || calendarWeek > fallSemesterEnd) {
+			return
+		}
+
+		// Start the clipper
+		if err := createAndStartClipper(id, roomUrl, time.Duration(durationMinutes)*time.Minute); err != nil {
+			log.Printf("Failed to start clipper %s with url %s using schedule %s: %v\n", id, roomUrl, schedule, err)
+		}
+	}))
 
 	return nil
 }
