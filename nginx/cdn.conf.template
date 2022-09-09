@@ -5,6 +5,14 @@ server {
 
     root ${CDN_ROOT};
 
+    location ~ (/lecture_clips.*) {
+        auth_request /auth;
+    }
+
+    location /auth {
+        proxy_pass http://${WWW_HOSTNAME}:3000${STUDENT_AUTH_PATH};
+    }
+
     location ~ (\.gitkeep$) {
         return 404;
     }
