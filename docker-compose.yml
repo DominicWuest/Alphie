@@ -4,6 +4,7 @@ services:
     build: ./nginx
     env_file:
      - env/.env
+     - env/www.env
     volumes:
      - ./cdn/data:/usr/share/nginx/cdn
     ports:
@@ -42,6 +43,15 @@ services:
      - env/.env
     volumes:
      - ./cdn/data:/usr/share/nginx/cdn
+  
+  www:
+    container_name: alphie-www
+    hostname: ${WWW_HOSTNAME} # Defined in .env
+    build: ./www
+    init: true
+    env_file:
+     - env/.env
+     - env/www.env
     
   grpc:
     container_name: alphie-grpc
