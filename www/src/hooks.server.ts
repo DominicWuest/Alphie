@@ -2,8 +2,6 @@ import type { Handle, RequestEvent } from '@sveltejs/kit';
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import jwt from 'jsonwebtoken';
 
-// TODO: Verify environment variables are set at startup
-
 export const handle: Handle = async function ({ event, resolve }) {
 	if (event.url.pathname.startsWith(process.env.STUDENT_AUTH_PATH || '')) {
 		return studentAuth(event);
