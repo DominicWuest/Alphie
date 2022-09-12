@@ -52,7 +52,17 @@ services:
     env_file:
      - env/.env
      - env/www.env
-    
+    volumes:
+     - ./www/build:/app/sync
+    # Syncing the volume and starting nodemon for hot reloading
+    command: sh -c "
+      cp -r /app/build/* /app/sync && 
+      rm -rf /app/build && 
+      ln -s /app/sync /app/build && 
+      python3 checkEnv.py && 
+      yarn global add nodemon && 
+      nodemon --watch /app/sync /app/build/build/index.js"
+
   grpc:
     container_name: alphie-grpc
     hostname: ${GRPC_HOSTNAME} # Defined in .env
