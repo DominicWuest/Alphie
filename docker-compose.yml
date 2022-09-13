@@ -58,10 +58,10 @@ services:
     command: sh -c "
       cp -r /app/build/* /app/sync && 
       rm -rf /app/build && 
-      ln -s /app/sync /app/build && 
+      ln -s /app/sync /app/run && 
       python3 checkEnv.py && 
       yarn global add nodemon && 
-      nodemon --watch /app/sync /app/build/build/index.js"
+      nodemon --watch /app/sync /app/run/build/index.js"
 
   grpc:
     container_name: alphie-grpc
