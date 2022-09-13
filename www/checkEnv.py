@@ -1,6 +1,6 @@
 import os
 
-needed_vars = ['STUDENT_AUTH_PATH', 'CDN_DOMAIN']
+needed_vars = ['STUDENT_AUTH_PATH', 'CDN_DOMAIN', 'DEV_MAIL_ADDR']
 
 
 def error(var):
