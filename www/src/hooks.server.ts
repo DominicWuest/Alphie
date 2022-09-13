@@ -1,5 +1,4 @@
 import type { Handle, RequestEvent } from '@sveltejs/kit';
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import jwt from 'jsonwebtoken';
 
 export const handle: Handle = async function ({ event, resolve }) {
@@ -10,6 +9,11 @@ export const handle: Handle = async function ({ event, resolve }) {
 	return res;
 };
 
+type tokenProperties = {
+	student: boolean;
+	exp: number;
+};
+
 function studentAuth(event: RequestEvent): Response {
 	// Return 200 OK if auth is disabled
 	if (!process.env.STUDENT_AUTH_ENABLED) {
@@ -17,6 +21,24 @@ function studentAuth(event: RequestEvent): Response {
 	}
 	// The JWT token
 	const token = event.cookies.get('jwt') || '';
-	console.log(token);
-	return new Response('Unauthorized', { status: 401 });
+	if (!token) {
+		return new Response('Unauthorized', { status: 401 });
+	}
+
+	let response = new Response();
+
+	jwt.verify(token, process.env.JWT_PUBLIC_KEY || '', function (err, decoded) {
+		// If token is invalid or expired
+		if (err) {
+			response = new Response('Unauthorized', { status: 401 });
+			return;
+		}
+		const props: tokenProperties = <tokenProperties>(<unknown>decoded);
+		// Ensuring the token is for a student
+		if (!props.student) {
+			response = new Response('Unauthorized', { status: 401 });
+			return;
+		}
+	});
+	return response;
 }
