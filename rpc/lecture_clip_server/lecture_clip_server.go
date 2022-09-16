@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -146,18 +147,20 @@ func (s *LectureClipServer) Clip(ctx context.Context, in *pb.ClipRequest) (*pb.C
 	// Make sure the clippers are consistent during the clipping
 	clippersMutex.Lock()
 
+	lectureId := strings.ToLower(in.GetLectureId())
+
 	// Clip specific lecture
 	var clipper *lectureClipper
 	// If an index was supplied
-	if index, err := strconv.Atoi(in.GetLectureId()); err == nil {
+	if index, err := strconv.Atoi(lectureId); err == nil {
 		clipper = activeClippers[index]
 	} else {
 		// Try ID
-		tmp, found := activeClippersByID[in.GetLectureId()]
+		tmp, found := activeClippersByID[lectureId]
 		clipper = tmp
 		if !found {
 			// Try alias
-			tmp, found = activeClippersByAlias[in.GetLectureId()]
+			tmp, found = activeClippersByAlias[lectureId]
 			clipper = tmp
 			if !found {
 				clippersMutex.Unlock()
@@ -217,10 +220,10 @@ func createAndStartClipper(clipperId string, aliases []string, roomUrl string, r
 	clippersMutex.Lock()
 
 	activeClippers = append(activeClippers, clipper)
-	activeClippersByID[clipperId] = clipper
+	activeClippersByID[strings.ToLower(clipperId)] = clipper
 
 	for _, alias := range aliases {
-		activeClippersByAlias[alias] = clipper
+		activeClippersByAlias[strings.ToLower(alias)] = clipper
 	}
 
 	clippersMutex.Unlock()
