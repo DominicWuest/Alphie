@@ -16,9 +16,10 @@ const (
 	clipCacheSize int = 180
 )
 
-func createClipper(clipperId, endpoint string) (*lectureClipper, error) {
+func createClipper(clipperId string, aliases []string, endpoint string) (*lectureClipper, error) {
 	return &lectureClipper{
 		clipperId:      clipperId,
+		aliases:        aliases,
 		streamEndpoint: endpoint,
 		cache:          make([][]byte, clipCacheSize),
 	}, nil

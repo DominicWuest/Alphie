@@ -22,8 +22,8 @@ message ListRequest {}
 // Ways to address clipper
 message ClipperID {
     string id = 1;
-    // String to be consistent with clip request ID
-    string index = 2;
+    int32 index = 2;
+    repeated string alias = 3;
 }
 
 message ListResponse {
