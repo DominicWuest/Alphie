@@ -20,7 +20,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	_ "github.com/lib/pq"
+	"github.com/lib/pq"
 
 	"github.com/robfig/cron"
 )
@@ -35,6 +35,8 @@ type lectureClipper struct {
 	sync.Mutex
 	// The ID of the clipper itself
 	clipperId string
+	// All aliases of the clipper
+	aliases []string
 	// Where to send requests to for the video fragments
 	streamEndpoint string
 	// Used to stop clipper
@@ -69,8 +71,10 @@ const (
 )
 
 var (
-	// Active clippers currently tracking active lectures
+	// Active clippers currently tracking active lectures, addressed by their ID
 	activeClippersByID map[string]*lectureClipper
+	// Active clippers currently tracking active lectures, addressed by their alias
+	activeClippersByAlias map[string]*lectureClipper
 	// List of active clippers to address by index
 	activeClippers []*lectureClipper
 	// Ensure consistency when adding and removing clippers
@@ -107,10 +111,11 @@ func Register(srv *grpc.Server) {
 	cdnConnString = "http://" + cdnHostname + ":" + cdnPort + cdnURL
 
 	activeClippersByID = make(map[string]*lectureClipper)
+	activeClippersByAlias = make(map[string]*lectureClipper)
 	clippersMutex = &sync.Mutex{}
 
 	// Temporary test clipper
-	err := createAndStartClipper("test", "hg-f-1", 30*time.Second)
+	err := createAndStartClipper("test", []string{"test alias", "testing"}, "hg-f-1", 30*time.Second)
 	if err != nil {
 		log.Println("Failed to start test clipper: ", err)
 	}
@@ -147,11 +152,17 @@ func (s *LectureClipServer) Clip(ctx context.Context, in *pb.ClipRequest) (*pb.C
 	if index, err := strconv.Atoi(in.GetLectureId()); err == nil {
 		clipper = activeClippers[index]
 	} else {
+		// Try ID
 		tmp, found := activeClippersByID[in.GetLectureId()]
 		clipper = tmp
 		if !found {
-			clippersMutex.Unlock()
-			return nil, status.Error(codes.InvalidArgument, "invalid lecture ID")
+			// Try alias
+			tmp, found = activeClippersByAlias[in.GetLectureId()]
+			clipper = tmp
+			if !found {
+				clippersMutex.Unlock()
+				return nil, status.Error(codes.InvalidArgument, "invalid lecture ID")
+			}
 		}
 	}
 	clip, err := clipper.clip()
@@ -183,16 +194,17 @@ func (s *LectureClipServer) List(ctx context.Context, in *pb.ListRequest) (*pb.L
 
 	for i, clipper := range activeClippers {
 		res.Ids = append(res.Ids, &pb.ClipperID{
-			Index: strconv.Itoa(i),
+			Index: int32(i),
 			Id:    clipper.clipperId,
+			Alias: clipper.aliases,
 		})
 	}
 
 	return &res, nil
 }
 
-func createAndStartClipper(clipperId, roomUrl string, recordingDuration time.Duration) error {
-	clipper, err := createClipper(clipperId, lectureClipBaseUrl+"/"+roomUrl)
+func createAndStartClipper(clipperId string, aliases []string, roomUrl string, recordingDuration time.Duration) error {
+	clipper, err := createClipper(clipperId, aliases, lectureClipBaseUrl+"/"+roomUrl)
 	if err != nil {
 		return err
 	}
@@ -206,6 +218,10 @@ func createAndStartClipper(clipperId, roomUrl string, recordingDuration time.Dur
 
 	activeClippers = append(activeClippers, clipper)
 	activeClippersByID[clipperId] = clipper
+
+	for _, alias := range aliases {
+		activeClippersByAlias[alias] = clipper
+	}
 
 	clippersMutex.Unlock()
 
@@ -230,6 +246,10 @@ func shutdownClipper(clipper *lectureClipper) error {
 	}
 	activeClippers = newClippers
 	delete(activeClippersByID, clipper.clipperId)
+
+	for _, alias := range clipper.aliases {
+		delete(activeClippersByAlias, alias)
+	}
 
 	clippersMutex.Unlock()
 
@@ -303,12 +323,28 @@ func initLectureClipperSchedules(db *sql.DB) error {
 			semester        string
 			room_url        string
 			schedule        string
+			aliases         []string
 			durationMinutes int
 		)
 		if err := rows.Scan(&id, &semester, &room_url, &schedule, &durationMinutes); err != nil {
-			return nil
+			return err
 		}
-		if err := initSchedule(id, semester, room_url, schedule, durationMinutes); err != nil {
+
+		aliasRows, err := db.QueryContext(ctx,
+			`SELECT aliases FROM lecture_clippers.lecture_alias
+		WHERE id=$1
+		`, id)
+		if err != nil {
+			return err
+		}
+
+		aliasRows.Next()
+		if err = aliasRows.Scan(pq.Array(&aliases)); err != nil {
+			return err
+		}
+		aliasRows.Close()
+
+		if err := initSchedule(id, semester, room_url, schedule, aliases, durationMinutes); err != nil {
 			return err
 		}
 	}
@@ -319,7 +355,7 @@ func initLectureClipperSchedules(db *sql.DB) error {
 }
 
 // Initialises the scheduled clipper using a cronjob
-func initSchedule(id, semester, roomUrl, schedule string, durationMinutes int) error {
+func initSchedule(id, semester, roomUrl, schedule string, aliases []string, durationMinutes int) error {
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 	sched, err := parser.Parse(schedule)
 	if err != nil {
@@ -344,7 +380,7 @@ func initSchedule(id, semester, roomUrl, schedule string, durationMinutes int) e
 		}
 
 		// Start the clipper
-		if err := createAndStartClipper(id, roomUrl, time.Duration(durationMinutes)*time.Minute); err != nil {
+		if err := createAndStartClipper(id, aliases, roomUrl, time.Duration(durationMinutes)*time.Minute); err != nil {
 			log.Printf("Failed to start clipper %s with url %s using schedule %s: %v\n", id, roomUrl, schedule, err)
 		}
 	}))

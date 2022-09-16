@@ -82,8 +82,8 @@ func (s *Clip) HandleCommand(bot *discord.Session, ctx *discord.MessageCreate, a
 		}
 		for _, clipper := range clippers {
 			embed.Fields = append(embed.Fields, &discord.MessageEmbedField{
-				Name:  "Index: " + clipper.Index,
-				Value: "ID: " + clipper.Id,
+				Name:  fmt.Sprint("Index: ", clipper.Index),
+				Value: fmt.Sprintf("ID: %s\nAliases: %s", clipper.Id, strings.Join(clipper.Alias, ", ")),
 			})
 		}
 	} else { // Make clip

@@ -15,3 +15,10 @@ CREATE TABLE lecture_clippers.schedule (
     PRIMARY KEY (id, schedule),
     FOREIGN KEY (id) REFERENCES lecture_clippers.clippers(id)
 );
+
+CREATE TABLE lecture_clippers.lecture_alias (
+    id VARCHAR(20) NOT NULL,
+    aliases VARCHAR(64)[],
+    PRIMARY KEY (id),
+    FOREIGN KEY (id) REFERENCES lecture_clippers.clippers(id)
+)
