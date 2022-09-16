@@ -5,7 +5,7 @@ server {
 
     root ${CDN_ROOT};
 
-    location ~ (/lecture_clips.*) {
+    location ~ (lecture_clips.*) {
         auth_request /auth;
     }
 
