@@ -6,20 +6,15 @@ option go_package = "github.com/DominicWuest/Alphie/rpc/lecture_clip/pb;pb";
 
 message ClipRequest {
     // The ID of the lecture to clip (ID taken from VVZ or index)
-    // May be omitted to make a clip of all current lectures
-    optional string lecture_id = 1;
-}
-
-message Clip {
-    // The ID of the clipped lecture
-    string id = 1;
-    // The path where the clips can get accessed
-    string content_path = 2;
+    // Or one of the lectures' aliases
+    string lecture_id = 1;
 }
 
 message ClipResponse {
-    // All created clips and where they were stored
-    repeated Clip clips = 1;
+    // The ID of the clipped lecture
+    optional string id = 1;
+    // The path where the clips can get accessed
+    string content_path = 2;
 }
 
 message ListRequest {}
