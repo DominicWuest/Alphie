@@ -14,7 +14,7 @@ message ClipResponse {
     // The ID of the clipped lecture
     optional string id = 1;
     // The path where the clips can get accessed
-    string content_path = 2;
+    string content_url = 2;
 }
 
 message ListRequest {}
