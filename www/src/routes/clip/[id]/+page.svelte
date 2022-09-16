@@ -1,8 +1,23 @@
 <script lang="ts">
 	import type { PageData } from './$types';
 	import VideoPlayer from 'svelte-video-player';
+	import { onMount } from 'svelte';
 
 	export let data: PageData;
+
+	onMount(() => {
+		fetch(data.authenticationUrl)
+			.then((res) => {
+				if (res.status !== 200) {
+					// Where to send the user to for authorization, plus a variable to avoid caching
+					const redirectUrl = `${window.location.origin}/tokenset${
+						window.location.pathname
+					}&n=${Date.now()}`;
+					window.location.href = `${data.authorizationUrl}?redirect=${encodeURI(redirectUrl)}`;
+				}
+			})
+			.catch(console.error);
+	});
 </script>
 
 <div class="video-wrapper">
