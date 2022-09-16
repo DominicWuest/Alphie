@@ -123,7 +123,7 @@ func (s *Clip) HandleCommand(bot *discord.Session, ctx *discord.MessageCreate, a
 			} else {
 				embed.Fields = append(embed.Fields, &discord.MessageEmbedField{
 					Name:  "ID: " + res.GetId(),
-					Value: res.GetContentPath(),
+					Value: res.GetContentUrl(),
 				})
 			}
 		}

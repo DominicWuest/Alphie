@@ -91,6 +91,8 @@ var (
 	cdnPort string
 	// Where to post clip requests to
 	cdnConnString string
+	// Domain of the frontend
+	wwwDomain string
 )
 
 var cronScheduler *cron.Cron
@@ -104,12 +106,15 @@ func Register(srv *grpc.Server) {
 
 	hostname := os.Getenv("CDN_HOSTNAME")
 	port := os.Getenv("CDN_REST_PORT")
-	if len(hostname)*len(port) == 0 {
+	domain := os.Getenv("WWW_DOMAIN")
+	if len(hostname)*len(port)*len(domain) == 0 {
 		panic("No CDN_HOSTNAME or CDN_REST_PORT set")
 	}
 	cdnHostname = hostname
 	cdnPort = port
 	cdnConnString = "http://" + cdnHostname + ":" + cdnPort + cdnURL
+
+	wwwDomain = domain
 
 	activeClippersByID = make(map[string]*lectureClipper)
 	activeClippersByAlias = make(map[string]*lectureClipper)
@@ -182,8 +187,8 @@ func (s *LectureClipServer) Clip(ctx context.Context, in *pb.ClipRequest) (*pb.C
 		return nil, err
 	}
 	response := &pb.ClipResponse{
-		Id:          &clipper.clipperId,
-		ContentPath: url,
+		Id:         &clipper.clipperId,
+		ContentUrl: url,
 	}
 
 	return response, nil
@@ -282,7 +287,11 @@ func postClip(clip []byte) (string, error) {
 		return "", err
 	}
 
-	return response.Filename, nil
+	clipUrl := "/clip" + strings.TrimSuffix(strings.TrimPrefix(response.Filename, cdnURL), ".mp4")
+
+	url := "http://" + wwwDomain + clipUrl
+
+	return url, nil
 }
 
 // Checks that the DB is up before querying the schedules
