@@ -138,59 +138,41 @@ func Register(srv *grpc.Server) {
 }
 
 func (s *LectureClipServer) Clip(ctx context.Context, in *pb.ClipRequest) (*pb.ClipResponse, error) {
-	clips := [][]byte{}
-	clipperIds := []string{}
 	// Make sure the clippers are consistent during the clipping
 	clippersMutex.Lock()
 
-	if in.LectureId == nil { // Clip all lectures
-		for _, clipper := range activeClippers {
-			clip, err := clipper.clip()
-			if err != nil {
-				return nil, err
-			}
-			clips = append(clips, clip)
-			clipperIds = append(clipperIds, clipper.clipperId)
+	// Clip specific lecture
+	var clipper *lectureClipper
+	// If an index was supplied
+	if index, err := strconv.Atoi(in.GetLectureId()); err == nil {
+		clipper = activeClippers[index]
+	} else {
+		tmp, found := activeClippersByID[in.GetLectureId()]
+		clipper = tmp
+		if !found {
+			clippersMutex.Unlock()
+			return nil, status.Error(codes.InvalidArgument, "invalid lecture ID")
 		}
-	} else { // Clip specific lecture
-		var clipper *lectureClipper
-		// If an index was supplied
-		if index, err := strconv.Atoi(in.GetLectureId()); err == nil {
-			clipper = activeClippers[index]
-		} else {
-			tmp, found := activeClippersByID[in.GetLectureId()]
-			clipper = tmp
-			if !found {
-				return nil, status.Error(codes.InvalidArgument, "invalid lecture ID")
-			}
-		}
-		clip, err := clipper.clip()
-		if err != nil {
-			return nil, err
-		}
-		clips = append(clips, clip)
-		clipperIds = append(clipperIds, clipper.clipperId)
+	}
+	clip, err := clipper.clip()
+	if err != nil {
+		clippersMutex.Unlock()
+		return nil, err
 	}
 
 	clippersMutex.Unlock()
 
 	// Start posting the new clips to the CDN
-	response := []*pb.Clip{}
-
-	for i := range clips {
-		url, err := postClip(clips[i])
-		if err != nil {
-			return nil, err
-		}
-		response = append(response, &pb.Clip{
-			Id:          clipperIds[i],
-			ContentPath: url,
-		})
+	url, err := postClip(clip)
+	if err != nil {
+		return nil, err
+	}
+	response := &pb.ClipResponse{
+		Id:          &clipper.clipperId,
+		ContentPath: url,
 	}
 
-	return &pb.ClipResponse{
-		Clips: response,
-	}, nil
+	return response, nil
 }
 
 func (s *LectureClipServer) List(ctx context.Context, in *pb.ListRequest) (*pb.ListResponse, error) {

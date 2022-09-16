@@ -26,17 +26,9 @@ const timeout time.Duration = 60 * time.Second
 
 // Reply with Pong! and the latency of the bot in ms
 func (s *Clip) HandleCommand(bot *discord.Session, ctx *discord.MessageCreate, args []string) error {
-	if len(args) > 2 || (len(args) == 2 && strings.ToLower(args[1]) == "help") {
+	if len(args) < 2 || (len(args) == 2 && strings.ToLower(args[1]) == "help") {
 		bot.ChannelMessageSend(ctx.ChannelID, s.Help())
 		return nil
-	}
-
-	timeoutCtx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-
-	req := &pb.ClipRequest{}
-	if len(args) == 2 {
-		req.LectureId = &args[1]
 	}
 
 	embed := &discord.MessageEmbed{
@@ -47,7 +39,23 @@ func (s *Clip) HandleCommand(bot *discord.Session, ctx *discord.MessageCreate, a
 			Text:    "Invoked by " + ctx.Author.Username,
 			IconURL: ctx.Author.AvatarURL(""),
 		},
+		Fields: []*discord.MessageEmbedField{
+			{
+				Name:  "Status: Processing",
+				Value: fmt.Sprintf("Timeout after %.2f seconds.", timeout.Seconds()),
+			},
+		},
 	}
+
+	msg, _ := bot.ChannelMessageSendEmbed(ctx.ChannelID, embed)
+
+	timer := time.Now()
+
+	timeoutCtx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	req := &pb.ClipRequest{}
+	req.LectureId = strings.Join(args[1:], " ")
 
 	// List active clippers
 	if len(args) == 2 && strings.ToLower(args[1]) == "list" {
@@ -55,6 +63,14 @@ func (s *Clip) HandleCommand(bot *discord.Session, ctx *discord.MessageCreate, a
 		res, err := s.client.List(timeoutCtx, &pb.ListRequest{})
 		if err != nil {
 			return err
+		}
+
+		embed.Fields = []*discord.MessageEmbedField{
+			{
+
+				Name:  "Status: Done",
+				Value: fmt.Sprintf("Finished after: %.2f seconds.", time.Since(timer).Seconds()),
+			},
 		}
 
 		clippers := res.GetIds()
@@ -77,6 +93,10 @@ func (s *Clip) HandleCommand(bot *discord.Session, ctx *discord.MessageCreate, a
 			if status.Code(err) == codes.InvalidArgument {
 				embed.Fields = []*discord.MessageEmbedField{
 					{
+						Name:  "Status: Error",
+						Value: fmt.Sprintf("Finished after: %.2f seconds.", time.Since(timer).Seconds()),
+					},
+					{
 						Name:  "Invalid ID supplied.",
 						Value: "No clips were created. Use `clip list` to see all available active lectures.",
 					},
@@ -85,26 +105,31 @@ func (s *Clip) HandleCommand(bot *discord.Session, ctx *discord.MessageCreate, a
 				return err
 			}
 		} else {
+			embed.Fields = []*discord.MessageEmbedField{
+				{
+
+					Name:  "Status: Done",
+					Value: fmt.Sprintf("Finished after: %.2f seconds.", time.Since(timer).Seconds()),
+				},
+			}
 			// No clips were created, as no active lectures
-			if len(res.Clips) == 0 {
+			if res.Id == nil {
 				embed.Fields = []*discord.MessageEmbedField{
 					{
 						Name:  "No active lectures.",
 						Value: "No clips were created.",
 					},
 				}
-			}
-
-			for _, clip := range res.Clips {
+			} else {
 				embed.Fields = append(embed.Fields, &discord.MessageEmbedField{
-					Name:  "ID: " + clip.GetId(),
-					Value: clip.GetContentPath(),
+					Name:  "ID: " + res.GetId(),
+					Value: res.GetContentPath(),
 				})
 			}
 		}
 	}
 
-	bot.ChannelMessageSendEmbed(ctx.ChannelID, embed)
+	bot.ChannelMessageEditEmbed(msg.ChannelID, msg.ID, embed)
 
 	return nil
 }
