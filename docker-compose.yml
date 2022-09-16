@@ -56,6 +56,7 @@ services:
      - ./www/build:/app/sync
     # Syncing the volume and starting nodemon for hot reloading
     command: sh -c "
+      rm -rf /app/run && 
       rm -rf /app/sync/* && 
       cp -r /app/build/* /app/sync && 
       ln -s /app/sync /app/run && 
