@@ -116,7 +116,7 @@ func (s *ImageGeneration) HandleCommand(bot *discord.Session, ctx *discord.Messa
 	processingTime := time.Since(startTime).Round(time.Second)
 
 	url := res.GetContentPath()
-	url = "http://" + s.cdnUrl + url
+	url = s.cdnUrl + url
 	embed.Author = &discord.MessageEmbedAuthor{
 		Name: "Status: Finished",
 	}
@@ -145,10 +145,11 @@ func (s ImageGeneration) Help() string {
 func (s ImageGeneration) Init(args ...interface{}) constants.Command {
 	// Establish the connection to the gRPC server
 	cdnUrl := os.Getenv("CDN_DOMAIN")
-	if len(cdnUrl) == 0 {
+	proto := os.Getenv("HTTP_PROTO")
+	if len(cdnUrl)*len(proto) == 0 {
 		panic("No CDN_DOMAIN set")
 	}
-	s.cdnUrl = cdnUrl
+	s.cdnUrl = proto + "://" + cdnUrl
 
 	grpcHostname := os.Getenv("GRPC_HOSTNAME")
 	grpcPort := os.Getenv("GRPC_PORT")

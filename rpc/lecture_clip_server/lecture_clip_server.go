@@ -93,6 +93,8 @@ var (
 	cdnConnString string
 	// Domain of the frontend
 	wwwDomain string
+	// Which protocol to use when accessing outside facing HTTP services
+	httpProto string
 )
 
 var cronScheduler *cron.Cron
@@ -107,7 +109,8 @@ func Register(srv *grpc.Server) {
 	hostname := os.Getenv("CDN_HOSTNAME")
 	port := os.Getenv("CDN_REST_PORT")
 	domain := os.Getenv("WWW_DOMAIN")
-	if len(hostname)*len(port)*len(domain) == 0 {
+	proto := os.Getenv("HTTP_PROTO")
+	if len(hostname)*len(port)*len(domain)*len(proto) == 0 {
 		panic("No CDN_HOSTNAME or CDN_REST_PORT set")
 	}
 	cdnHostname = hostname
@@ -115,6 +118,8 @@ func Register(srv *grpc.Server) {
 	cdnConnString = "http://" + cdnHostname + ":" + cdnPort + cdnURL
 
 	wwwDomain = domain
+
+	httpProto = proto
 
 	activeClippersByID = make(map[string]*lectureClipper)
 	activeClippersByAlias = make(map[string]*lectureClipper)
@@ -289,7 +294,7 @@ func postClip(clip []byte) (string, error) {
 
 	clipUrl := "/clip" + strings.TrimSuffix(strings.TrimPrefix(response.Filename, cdnURL), ".mp4")
 
-	url := "http://" + wwwDomain + clipUrl
+	url := httpProto + "://" + wwwDomain + clipUrl
 
 	return url, nil
 }

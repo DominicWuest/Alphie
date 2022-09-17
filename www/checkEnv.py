@@ -1,7 +1,7 @@
 import os
 
 needed_vars = ['COMMON_DOMAIN', 'STUDENT_AUTH_PATH',
-               'CDN_DOMAIN', 'DEV_MAIL_ADDR']
+               'CDN_DOMAIN', 'DEV_MAIL_ADDR', 'HTTP_PROTO']
 
 
 def error(var):
