@@ -62,6 +62,32 @@ data:
   GRPC_PORT: "2003"
   BOUNCE_CAP: "3"
   FLUID_CAP: "1"
+  LECTURE_CLIP_BASE_URL: **REMOVED**
+--- # Environment variables for www service
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  namespace: alphie
+  name: www-config
+data:
+  STUDENT_AUTH_PATH: "/student"
+  STUDENT_AUTH_ENABLED: "1"
+  DEV_MAIL_ADDR: **REMOVED**
+  AUTHORIZATION_URL: **REMOVED**
+  WWW_HOSTNAME: "alphie-www"
+  WWW_DOMAIN: "www.alphie.dev"
+  COMMON_DOMAIN: "alphie.dev"
+  HTTP_PROTO: "https"
+  JWT_PUBLIC_KEY: |
+    -----BEGIN PUBLIC KEY-----
+    MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAqg7hGkOqtVF3NP1wSo4i
+    J6Lfsgyjvw7kMrrIjvWRU0g+FTfB7IMBUTvimOk9AyqT+bmY/fhUPque5px+mvPP
+    eFZRc1sDrgCNTBjSyNMjOv+3AlNRPH28xVuesQau5eKueZybJYJtvTv1JNsVzE2q
+    +l8AN5hogAkykkIIHawYE2FqH2hAIYpriImYQIosLJIV9VZqR6hwMLAgvkVs0Cn2
+    DiOLB7yVKGPhf2GKRd1OmIL6yfiBENsQhYeYrBx3WWKNlkjuJI75vBGBOvnQAbl3
+    Hqz/D6f/AhOXH69PJEEpTC3L6oEQnbXq8rUbuTLnTpBZxTfPWHnpMKfYHq3YVB3V
+    MQIDAQAB
+    -----END PUBLIC KEY-----
 --- # Ingress service
 apiVersion: networking.k8s.io/v1
 kind: Ingress
@@ -70,14 +96,28 @@ metadata:
   name: ingress
   annotations:
     nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
 spec:
   ingressClassName: nginx
   tls:
   - hosts:
     - "cdn.alphie.dev"
-    secretName: alphie-tls # Has to be set up manually
+    secretName: cdn-tls # Has to be set up manually
+  - hosts:
+    - "www.alphie.dev"
+    secretName: www-tls # Has to be set up manually
   rules:
   - host: "cdn.alphie.dev"
+    http:
+      paths:
+      - pathType: Prefix
+        path: "/"
+        backend:
+          service:
+            name: nginx
+            port:
+              number: 80
+  - host: "www.alphie.dev"
     http:
       paths:
       - pathType: Prefix
@@ -120,7 +160,7 @@ spec:
     spec:
       containers:
       - name: nginx
-        image: dominicwuest/alphie-nginx:0.1.0
+        image: dominicwuest/alphie-nginx:0.2.0
         resources:
           limits:
             cpu: "250m"
@@ -130,6 +170,8 @@ spec:
             name: shared-config
         - configMapRef:
             name: cdn-config
+        - configMapRef:
+            name: www-config
         volumeMounts:
         - name: cdn-files
           mountPath: "usr/share/nginx/cdn"
@@ -196,7 +238,7 @@ spec:
     spec:
       containers:
       - name: cdn
-        image: dominicwuest/alphie-cdn:0.2.0
+        image: dominicwuest/alphie-cdn:0.3.0
         resources:
           limits:
             cpu: "250m"
@@ -243,7 +285,7 @@ spec:
     spec:
       containers:
       - name: bot
-        image: dominicwuest/alphie-bot:0.3.3
+        image: dominicwuest/alphie-bot:0.4.0
         resources:
           limits:
             cpu: "500m"
@@ -304,7 +346,7 @@ spec:
     spec:
       containers:
       - name: grpc
-        image: dominicwuest/alphie-grpc:1.2.1
+        image: dominicwuest/alphie-grpc:1.3.0
         resources:
           limits:
             cpu: "3.0"
@@ -375,7 +417,7 @@ spec:
     spec:
       containers:
       - name: postgres
-        image: dominicwuest/alphie-db:0.1.0
+        image: dominicwuest/alphie-db:0.2.0
         resources:
           limits:
             cpu: "500m"
@@ -403,3 +445,58 @@ spec:
                 operator: In 
                 values:
                 - louis
+--- # Service for the frontend
+apiVersion: v1
+kind: Service
+metadata:
+  namespace: alphie
+  name: www
+spec:
+  type: ClusterIP
+  selector:
+    app: www
+  ports:
+    - protocol: TCP
+      port: 3000
+      targetPort: 3000
+--- # Frontend deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: alphie
+  name: www
+  labels:
+    app: www
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: www
+  template:
+    metadata:
+      labels:
+        app: www
+    spec:
+      containers:
+      - name: www
+        image: dominicwuest/alphie-www:0.1.0
+        resources:
+          limits:
+            cpu: "250m"
+            memory: "1024Mi"
+        envFrom:
+        - configMapRef:
+            name: shared-config
+        - configMapRef:
+            name: cdn-config
+        - configMapRef:
+            name: www-config
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: hostname
+                operator: In 
+                values:
+                - brittany
