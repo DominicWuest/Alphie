@@ -53,3 +53,5 @@ The RSA keys inside `auth/key.txt` and `env/www.env` are example keys for the pu
 In order for the lecture clip authentication to work, you have to generate a new RSA256 keypair and store the private key in `auth/key.txt` and the public key in `env/www.env`.
 
 Next, host the files contained in the `auth` directory and point the `AUTHORIZATION_URL` to it. You might need to adjust the `.htaccess.n` file first. If you are a student of ETH, you can simply host them on your personal website.
+
+Make sure your application runs over https in production by specifying the protocol inside `env/.env` and creating certificates for the domains.

@@ -21,7 +21,10 @@
 </script>
 
 <div class="video-wrapper">
-	<VideoPlayer poster="/favicon.png" source="http://{data.domain}/lecture_clips/{data.id}.mp4" />
+	<VideoPlayer
+		poster="/favicon.png"
+		source="{data.proto}://{data.domain}/lecture_clips/{data.id}.mp4"
+	/>
 </div>
 
 <footer>

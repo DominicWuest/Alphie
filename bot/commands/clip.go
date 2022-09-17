@@ -139,7 +139,7 @@ func (s Clip) Desc() string {
 }
 
 func (s Clip) Help() string {
-	return "Usage: `clip [id]`. The ID is optional and specifies the lecture you want to clip.\nUse `clip list` to see the indexes and IDs of the active clippers.\nIf no or a wrong ID is specified, all current lectures will be clipped."
+	return "Usage: `clip [id]`. The ID is optional and specifies the lecture you want to clip.\nUse `clip list` to see the indexes, IDs and aliases of the active clippers. They are addressable by each of those properties."
 }
 
 func (s Clip) Init(args ...interface{}) constants.Command {
