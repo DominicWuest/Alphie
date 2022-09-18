@@ -125,12 +125,6 @@ func Register(srv *grpc.Server) {
 	activeClippersByAlias = make(map[string]*lectureClipper)
 	clippersMutex = &sync.Mutex{}
 
-	// Temporary test clipper
-	err := createAndStartClipper("test", []string{"test alias", "testing"}, "hg-f-1", 30*time.Second)
-	if err != nil {
-		log.Println("Failed to start test clipper: ", err)
-	}
-
 	connString := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
 		os.Getenv("DB_HOSTNAME"),
 		os.Getenv("DB_PORT"),
