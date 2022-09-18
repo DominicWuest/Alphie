@@ -31,6 +31,7 @@ func main() {
 	COMMANDS["blackjack"] = commands.Blackjack{}.Init()
 	COMMANDS["todo"] = commands.Todo{}.Init()
 	COMMANDS["image"] = commands.ImageGeneration{}.Init()
+	COMMANDS["clip"] = commands.Clip{}.Init()
 
 	COMMANDS["help"] = commands.Help{}.Init(&COMMANDS)
 

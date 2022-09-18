@@ -1,0 +1,9 @@
+server {
+    listen 80;
+
+    server_name ${WWW_DOMAIN};
+
+    location / {
+        proxy_pass http://${WWW_HOSTNAME}:3000;
+    }
+}

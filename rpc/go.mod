@@ -5,6 +5,8 @@ go 1.18
 require (
 	github.com/andybons/gogif v0.0.0-20140526152223-16d573594812
 	github.com/fogleman/gg v1.3.0
+	github.com/lib/pq v1.10.6
+	github.com/robfig/cron v1.2.0
 	google.golang.org/grpc v1.46.2
 	google.golang.org/protobuf v1.27.1
 )
@@ -12,6 +14,7 @@ require (
 require (
 	github.com/golang/freetype v0.0.0-20170609003504-e2365dfdc4a0 // indirect
 	github.com/golang/protobuf v1.5.2 // indirect
+	github.com/quangngotan95/go-m3u8 v0.1.0
 	golang.org/x/image v0.0.0-20220601225756-64ec528b34cd // indirect
 	golang.org/x/net v0.0.0-20201021035429-f5854403a974 // indirect
 	golang.org/x/sys v0.0.0-20210119212857-b64e53b001e4 // indirect

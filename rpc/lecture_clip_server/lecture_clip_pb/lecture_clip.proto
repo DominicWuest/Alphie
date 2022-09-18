@@ -1,0 +1,38 @@
+syntax = "proto3";
+
+package lecture_clip;
+
+option go_package = "github.com/DominicWuest/Alphie/rpc/lecture_clip/pb;pb";
+
+message ClipRequest {
+    // The ID of the lecture to clip (ID taken from VVZ or index)
+    // Or one of the lectures' aliases
+    string lecture_id = 1;
+}
+
+message ClipResponse {
+    // The ID of the clipped lecture
+    optional string id = 1;
+    // The path where the clips can get accessed
+    string content_url = 2;
+}
+
+message ListRequest {}
+
+// Ways to address clipper
+message ClipperID {
+    string id = 1;
+    int32 index = 2;
+    repeated string alias = 3;
+}
+
+message ListResponse {
+    repeated ClipperID ids = 1;
+}
+
+service LectureClip {
+    // Captures and stores the clip
+    rpc Clip(ClipRequest) returns (ClipResponse) {}
+    // Returns a list of currently active clippers and their associated IDs
+    rpc List(ListRequest) returns (ListResponse) {}
+}

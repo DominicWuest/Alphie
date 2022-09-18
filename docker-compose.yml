@@ -4,6 +4,7 @@ services:
     build: ./nginx
     env_file:
      - env/.env
+     - env/www.env
     volumes:
      - ./cdn/data:/usr/share/nginx/cdn
     ports:
@@ -42,7 +43,27 @@ services:
      - env/.env
     volumes:
      - ./cdn/data:/usr/share/nginx/cdn
-    
+  
+  www:
+    container_name: alphie-www
+    hostname: ${WWW_HOSTNAME} # Defined in .env
+    build: ./www
+    init: true
+    env_file:
+     - env/.env
+     - env/www.env
+    volumes:
+     - ./www/build:/app/sync
+    # Syncing the volume and starting nodemon for hot reloading
+    command: sh -c "
+      rm -rf /app/run && 
+      rm -rf /app/sync/* && 
+      cp -r /app/build/* /app/sync && 
+      ln -s /app/sync /app/run && 
+      python3 checkEnv.py && 
+      yarn global add nodemon && 
+      nodemon --watch /app/sync /app/run/build/index.js"
+
   grpc:
     container_name: alphie-grpc
     hostname: ${GRPC_HOSTNAME} # Defined in .env
