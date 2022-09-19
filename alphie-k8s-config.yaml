@@ -74,7 +74,7 @@ data:
   STUDENT_AUTH_ENABLED: "1"
   DEV_MAIL_ADDR: **REMOVED**
   AUTHORIZATION_URL: **REMOVED**
-  WWW_HOSTNAME: "alphie-www"
+  WWW_HOSTNAME: "www"
   WWW_DOMAIN: "www.alphie.dev"
   COMMON_DOMAIN: "alphie.dev"
   HTTP_PROTO: "https"
@@ -300,6 +300,8 @@ spec:
         - configMapRef:
             name: cdn-config
         - configMapRef:
+            name: www-config
+        - configMapRef:
             name: grpc-config
         - configMapRef:
             name: shared-config
@@ -358,6 +360,12 @@ spec:
             name: cdn-config
         - configMapRef:
             name: grpc-config
+        - configMapRef:
+            name: db-config
+        - secretRef:
+            name: db-secrets
+        - configMapRef:
+            name: www-config
       affinity:
         nodeAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:

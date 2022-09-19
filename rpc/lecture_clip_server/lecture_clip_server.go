@@ -111,7 +111,7 @@ func Register(srv *grpc.Server) {
 	domain := os.Getenv("WWW_DOMAIN")
 	proto := os.Getenv("HTTP_PROTO")
 	if len(hostname)*len(port)*len(domain)*len(proto) == 0 {
-		panic("No CDN_HOSTNAME or CDN_REST_PORT set")
+		panic("No CDN_HOSTNAME, CDN_REST_PORT, WWW_DOMAIN or HTTP_PROTO set")
 	}
 	cdnHostname = hostname
 	cdnPort = port

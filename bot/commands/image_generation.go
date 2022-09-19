@@ -147,7 +147,7 @@ func (s ImageGeneration) Init(args ...interface{}) constants.Command {
 	cdnUrl := os.Getenv("CDN_DOMAIN")
 	proto := os.Getenv("HTTP_PROTO")
 	if len(cdnUrl)*len(proto) == 0 {
-		panic("No CDN_DOMAIN set")
+		panic("No CDN_DOMAIN or HTTP_PROTO set")
 	}
 	s.cdnUrl = proto + "://" + cdnUrl
 
