@@ -5,6 +5,8 @@ RUN go mod download
 COPY . .
 RUN go build -o /server
 
+# -------------------------------- #
+
 FROM alpine:latest AS deployment
 WORKDIR /usr/src/app
 RUN apk add tzdata
