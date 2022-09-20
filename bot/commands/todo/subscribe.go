@@ -310,11 +310,11 @@ func (s Todo) InitialiseSubscriptions() error {
 				// Don't creat the subscription item if the task is for another semester
 				_, calendarWeek := time.Now().ISOWeek()
 				if semester == "F" &&
-					calendarWeek < springSemesterStart || calendarWeek > springSemesterEnd {
+					(calendarWeek < springSemesterStart || calendarWeek > springSemesterEnd) {
 					return
 				}
 				if semester == "H" &&
-					calendarWeek < fallSemesterStart || calendarWeek > fallSemesterEnd {
+					(calendarWeek < fallSemesterStart || calendarWeek > fallSemesterEnd) {
 					return
 				}
 				if semester == "B" &&
