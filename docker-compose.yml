@@ -9,7 +9,6 @@ services:
      - ./cdn/data:/usr/share/nginx/cdn
     ports:
       - "80:80"
-      - "443:443"
 
   bot:
     container_name: alphie-bot
@@ -32,8 +31,6 @@ services:
       - env/.env
     volumes:
       - ./db/data:/var/lib/postgresql/data # Persistent data storage
-    ports:
-      - ${DB_PORT}:5432
     
   cdn:
     container_name: alphie-cdn
@@ -71,5 +68,3 @@ services:
     env_file:
      - env/.env
      - env/grpc.env
-    ports:
-      - ${GRPC_PORT}:${GRPC_PORT}
