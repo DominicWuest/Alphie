@@ -6,7 +6,7 @@ services:
      - env/.env
      - env/www.env
     volumes:
-     - ./cdn/data:/usr/share/nginx/cdn
+     - ./cdn/data:${CDN_ROOT}
     ports:
       - "80:80"
 
@@ -14,8 +14,9 @@ services:
     container_name: alphie-bot
     build: ./bot
     env_file:
-      - env/bot.env
       - env/.env
+      - env/bot.s.env
+      - env/db.s.env
     deploy:
       restart_policy:
         condition: on-failure
@@ -29,6 +30,7 @@ services:
     build: ./db
     env_file:
       - env/.env
+      - env/db.s.env
     volumes:
       - ./db/data:/var/lib/postgresql/data # Persistent data storage
     
@@ -39,7 +41,7 @@ services:
     env_file:
      - env/.env
     volumes:
-     - ./cdn/data:/usr/share/nginx/cdn
+     - ./cdn/data:${CDN_ROOT}
   
   www:
     container_name: alphie-www
@@ -49,6 +51,7 @@ services:
     env_file:
      - env/.env
      - env/www.env
+     - env/www.s.env
     volumes:
      - ./www/build:/app/sync
     # Syncing the volume and starting nodemon for hot reloading
@@ -67,4 +70,6 @@ services:
     build: ./rpc
     env_file:
      - env/.env
+     - env/db.s.env
      - env/grpc.env
+     - env/grpc.s.env
