@@ -96,16 +96,8 @@ metadata:
   name: ingress
   annotations:
     nginx.ingress.kubernetes.io/rewrite-target: /
-    nginx.ingress.kubernetes.io/ssl-redirect: "true"
 spec:
   ingressClassName: nginx
-  tls:
-  - hosts:
-    - "cdn.alphie.dev"
-    secretName: cdn-tls # Has to be set up manually
-  - hosts:
-    - "www.alphie.dev"
-    secretName: www-tls # Has to be set up manually
   rules:
   - host: "cdn.alphie.dev"
     http:
